@@ -302,7 +302,7 @@ export async function getHealth(ctx: ServiceContext): Promise<HealthResponse> {
 
   return {
     ok: true,
-    service: 'orbitwatch-api',
+    service: 'skyline-api',
     runtime: ctx.runtime,
     provider: 'CelesTrak',
     providerUrl: 'https://celestrak.org/NORAD/elements/gp-data-formats.php',

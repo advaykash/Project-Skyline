@@ -11,7 +11,7 @@ import path from 'node:path';
 function snapshotPlugin(): Plugin {
   const snapshotDir = path.resolve(__dirname, 'data', 'snapshot');
   return {
-    name: 'orbitwatch-snapshot',
+    name: 'skyline-snapshot',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = req.url?.split('?')[0] ?? '';

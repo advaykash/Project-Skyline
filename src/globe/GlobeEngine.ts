@@ -1,5 +1,5 @@
 /**
- * The OrbitWatch 3D scene.
+ * The Skyline 3D scene.
  *
  * FRAME: the scene is Earth-fixed (see src/orbital/constants.ts). The Earth mesh
  * never rotates; satellites and orbit paths are transformed from ECEF by the
@@ -125,6 +125,10 @@ export class GlobeEngine {
   private tickTimer: number | null = null;
   private tickId = 0;
   private pendingTickId = 0;
+  /** Id of the most recent catalogue load; older worker answers are ignored. */
+  private pendingCatalogId = 0;
+  /** Highest tick id applied to the markers; older answers are ignored. */
+  private appliedTickId = 0;
   private lastTickRequestedAt = 0;
   private lastOrbitRebuildMs = 0;
   private lastOrbitRebuildTime = 0;
@@ -323,7 +327,7 @@ export class GlobeEngine {
       if (this.layers) this.setLayers(this.layers);
     } catch (error) {
       // Textures are enhancement only; the scene works without them.
-      console.warn('[OrbitWatch] Earth textures failed to load; using the fallback surface.', error);
+      console.warn('[Skyline] Earth textures failed to load; using the fallback surface.', error);
     }
   }
 
@@ -350,12 +354,12 @@ export class GlobeEngine {
   private onContextLost = (event: Event): void => {
     event.preventDefault();
     this.contextLost = true;
-    console.warn('[OrbitWatch] WebGL context lost — rendering paused until the browser restores it.');
+    console.warn('[Skyline] WebGL context lost — rendering paused until the browser restores it.');
   };
 
   private onContextRestored = (): void => {
     this.contextLost = false;
-    console.info('[OrbitWatch] WebGL context restored — resuming rendering.');
+    console.info('[Skyline] WebGL context restored — resuming rendering.');
     // The restored context starts with a fresh default framebuffer, so the
     // drawing-buffer size and projection have to be re-derived.
     this.onResize();
@@ -394,18 +398,22 @@ export class GlobeEngine {
     });
     this.worker.addEventListener('message', this.onWorkerMessage);
     this.worker.addEventListener('error', this.onWorkerError);
-    this.worker.postMessage({ type: 'catalog', id: ++this.tickId, records });
+    this.pendingCatalogId = ++this.tickId;
+    this.worker.postMessage({ type: 'catalog', id: this.pendingCatalogId, records });
 
     this.rebuildOrbitGeometry(true);
   }
 
   private onWorkerMessage = (event: MessageEvent): void => {
     const message = event.data as
-      | { type: 'ready'; count: number; failures: unknown[] }
-      | { type: 'positions'; timeMs: number; positions: Float32Array; durationMs: number }
+      | { type: 'ready'; id: number; count: number; failures: unknown[] }
+      | { type: 'positions'; id: number; timeMs: number; positions: Float32Array; durationMs: number }
       | { type: 'error'; message: string };
 
     if (message.type === 'ready') {
+      // A catalogue switch terminates the old worker, but its already-posted
+      // answer may still be in flight: only the awaited load unlocks ticks.
+      if (message.id !== this.pendingCatalogId) return;
       this.workerReady = true;
       this.workerFailures = message.failures.length;
       this.options.callbacks.onWorkerStatus({
@@ -417,7 +425,12 @@ export class GlobeEngine {
       return;
     }
     if (message.type === 'positions') {
+      // Ticks can queue behind a slow catalogue pass; answers arrive in order,
+      // and only ever move the markers forward — an older answer can never
+      // overwrite newer state.
+      if (message.id <= this.appliedTickId) return;
       if (message.positions.length !== this.satCount * 3) return;
+      this.appliedTickId = message.id;
       writePositions(this.satGeometry, message.positions);
       this.options.callbacks.onWorkerStatus({
         ready: true,
@@ -427,12 +440,12 @@ export class GlobeEngine {
       return;
     }
     if (message.type === 'error') {
-      console.error('[OrbitWatch] propagation worker error:', message.message);
+      console.error('[Skyline] propagation worker error:', message.message);
     }
   };
 
   private onWorkerError = (event: ErrorEvent): void => {
-    console.error('[OrbitWatch] propagation worker failed:', event.message);
+    console.error('[Skyline] propagation worker failed:', event.message);
     this.options.callbacks.onWorkerStatus({ ready: false, failures: 0, lastTickMs: null });
   };
 
@@ -490,7 +503,7 @@ export class GlobeEngine {
       try {
         this.selectedSatrec = buildSatrec(this.selectedRecord);
       } catch (error) {
-        console.error('[OrbitWatch] cannot build a propagator for the selection:', error);
+        console.error('[Skyline] cannot build a propagator for the selection:', error);
         this.selectedSatrec = null;
       }
     }

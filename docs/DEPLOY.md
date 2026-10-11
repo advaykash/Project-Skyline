@@ -1,12 +1,12 @@
-# Deploying OrbitWatch to Cloudflare Pages
+# Deploying Skyline to Cloudflare Pages
 
-OrbitWatch's backend is implemented as **Cloudflare Pages Functions** (`functions/api/*`) and the
+Skyline's backend is implemented as **Cloudflare Pages Functions** (`functions/api/*`) and the
 frontend is a static Vite build (`dist/`). Both are served from the same origin — no CORS, no
 separate backend host, no Node.js server.
 
 ## One-time setup
 
-1. Create a Cloudflare Pages project (dashboard or `wrangler pages project create orbitwatch`).
+1. Create a Cloudflare Pages project (dashboard or `wrangler pages project create skyline`).
 2. Either connect the Git repository or deploy directly:
 
 **Option A — Git integration (recommended)**
@@ -26,7 +26,7 @@ Pages detects `functions/` automatically. The repository ships `.nvmrc` (Node 22
 ```bash
 npm install
 npm run build
-npx wrangler pages deploy dist --project-name orbitwatch
+npx wrangler pages deploy dist --project-name skyline
 ```
 
 Requires Cloudflare credentials (`wrangler login` or `CLOUDFLARE_API_TOKEN`). Never commit
@@ -52,10 +52,12 @@ No secrets are required at runtime. The application never sends credentials anyw
 - `dist/snapshot/*` — the offline CelesTrak GP dataset + provenance manifest (copied by the build)
 - `functions/api/health.ts` → `GET /api/health`
 - `functions/api/gp.ts` → `GET /api/gp?group=<id>`
+- `functions/api/weather.ts` → `GET /api/weather?lat=<deg>&lon=<deg>`
+- `functions/api/kp.ts` → `GET /api/kp`
 
 ## Caching & refresh policy
 
-- Per-group Cache API entries under `/__orbitwatch-cache/gp/<group>`, carrying retrieval-time and
+- Per-group Cache API entries under `/__skyline-cache/gp/<group>`, carrying retrieval-time and
   SHA-256 metadata in headers.
 - Upstream is contacted at most once per group per 2 hours per data centre (CelesTrak's guidance),
   or after a cache miss/expiry. Failed refreshes keep serving the last genuine payload.
@@ -77,16 +79,19 @@ curl -s "https://<project>.pages.dev/api/gp?group=stations" | python3 -c \
 # 3. Input validation
 curl -s -o /dev/null -w '%{http_code}\n' "https://<project>.pages.dev/api/gp"            # expect 400
 curl -s -o /dev/null -w '%{http_code}\n' "https://<project>.pages.dev/api/gp?group=x"    # expect 400
+curl -s "https://<project>.pages.dev/api/weather?lat=40.36&lon=-74.67" | head -c 200      # expect hourly[]
+curl -s "https://<project>.pages.dev/api/kp" | head -c 200                               # expect samples[]
 
 # 4. End-to-end UI (from any machine with Chrome + npm):
 CHROME_PATH=/usr/bin/google-chrome node tests/e2e/run.mjs https://<project>.pages.dev screenshots-prod
 ```
 
 In production the expected state is `live` for every group (CelesTrak is reachable from Cloudflare),
-and `x-orbitwatch-state: live` on `/api/gp` responses. If the deployment reports `snapshot`, the
+and `x-skyline-state: live` on `/api/gp` responses. If the deployment reports `snapshot`, the
 upstream fetch is failing — check the `upstream.lastError` field of `/api/health`.
 
 ## Direct navigation & refresh
 
-The site is a single-page app with no client-side routes: direct navigation and refresh both load
-`index.html` and re-fetch the catalogue. No rewrite rules are required.
+The site is a single-page app with hash routing (`#/explorer`, `#/sky`, …): direct navigation and
+refresh both load `index.html`, which restores the route from the hash and re-fetches the
+catalogue. No rewrite rules are required.

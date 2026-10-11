@@ -59,7 +59,7 @@ export function createUpstreamClient(options: UpstreamOptions): UpstreamClient {
         headers: {
           accept: 'application/json',
           // Identify the consumer per CelesTrak usage policy.
-          'user-agent': 'OrbitWatch/1.0 (+https://github.com/akulbajpai-code/SkyLine)',
+          'user-agent': 'Skyline/1.0 (+https://github.com/akulbajpai-code/SkyLine)',
         },
         signal: AbortSignal.timeout(options.timeoutMs),
       });

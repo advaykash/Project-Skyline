@@ -7,7 +7,11 @@ import {
   estimatedAlongTrackDriftKm,
 } from '../orbital/derived';
 import { buildSatrec, describePropagationFailure, propagateState, toCatalogObject } from '../orbital/elements';
+import { compassPoint, lookAnglesFromEcef } from '../orbital/observer';
 import { getTimeMs } from '../state/clock';
+import { useStore } from '../state/store';
+import { formatObserver } from '../state/observer';
+import { navigate } from './routes';
 import { StateChip } from './StateChip';
 import {
   formatAge,
@@ -38,6 +42,7 @@ const LIVE_STATE_INTERVAL_MS = 200;
 
 export const Inspector = memo(function Inspector(props: InspectorProps) {
   const { catalog, noradId, layers } = props;
+  const observer = useStore((s) => s.observer);
 
   const record = useMemo(() => {
     if (!catalog || noradId === null) return null;
@@ -138,11 +143,59 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
               <div className="banner-title">No usable position at this time</div>
               <div>{describePropagationFailure(liveState.error)}</div>
               <div className="field-note">
-                No position is shown instead — OrbitWatch never substitutes invented coordinates for a failed
+                No position is shown instead — Skyline never substitutes invented coordinates for a failed
                 propagation.
               </div>
             </div>
           </div>
+        </section>
+      ) : null}
+
+      {liveState && !liveState.error ? (
+        <section className="panel-section">
+          <h3 className="section-label">
+            From {observer.label ?? 'your observer'} · {formatObserver(observer)}
+          </h3>
+          <table className="data-table">
+            <tbody>
+              {(() => {
+                const look = lookAnglesFromEcef(liveState.positionEcefKm, observer, liveState.timeMs);
+                return (
+                  <>
+                    <tr>
+                      <th scope="row">Azimuth</th>
+                      <td>
+                        {formatNumber(look.azimuthDeg, 1)}
+                        <span className="unit">° {compassPoint(look.azimuthDeg)}</span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Elevation</th>
+                      <td>
+                        {formatNumber(look.elevationDeg, 1)}
+                        <span className="unit">° above horizon</span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Range</th>
+                      <td>
+                        {formatNumber(look.rangeKm, 0)}
+                        <span className="unit">km slant</span>
+                      </td>
+                    </tr>
+                  </>
+                );
+              })()}
+            </tbody>
+          </table>
+          <div className="action-row">
+            <button type="button" className="btn btn-secondary" onClick={() => navigate('sky')}>
+              Predict passes over my sky
+            </button>
+          </div>
+          <p className="field-note">
+            Observer-relative geometry at the same SGP4 instant — above the horizon is not the same as visible.
+          </p>
         </section>
       ) : null}
 

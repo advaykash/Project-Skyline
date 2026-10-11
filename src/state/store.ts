@@ -8,7 +8,11 @@
  */
 import { useSyncExternalStore } from 'react';
 import type { CatalogProvenance, DataState, HealthResponse } from '../../shared/contracts';
+import type { ObserverLocation, PredictedPass } from '../orbital/observer';
 import type { GpRecord } from '../orbital/types';
+
+/** Top-level application routes (hash-based; see `src/ui/routes.ts`). */
+export type Route = 'home' | 'explorer' | 'sky' | 'weather' | 'events' | 'about';
 
 export interface CatalogState {
   group: string;
@@ -46,6 +50,12 @@ export interface AppState {
   toasts: Array<{ id: number; text: string }>;
   /** Set when the WebGL context could not be created. */
   webglFailed: boolean;
+  /** Current top-level route. */
+  route: Route;
+  /** Shared observer location for passes, sky view and observing context. */
+  observer: ObserverLocation;
+  /** Pass selected for Orbit-to-Observer replay (null = none selected). */
+  replayPass: PredictedPass | null;
 }
 
 const initialLayers: LayerVisibility = {
@@ -74,6 +84,13 @@ let state: AppState = {
   rightPanelOpen: false,
   toasts: [],
   webglFailed: false,
+  route: 'home',
+  observer: {
+    latitudeDeg: 40.3573,
+    longitudeDeg: -74.6672,
+    label: 'Princeton, NJ',
+  },
+  replayPass: null,
 };
 
 const listeners = new Set<() => void>();

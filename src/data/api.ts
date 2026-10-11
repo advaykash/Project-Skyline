@@ -1,5 +1,5 @@
 /**
- * API client for the same-origin OrbitWatch API.
+ * API client for the same-origin Skyline API.
  *
  * Everything the interface displays about data provenance comes from these
  * responses — the client never guesses freshness and never labels anything

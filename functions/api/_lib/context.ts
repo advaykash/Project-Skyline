@@ -41,7 +41,7 @@ export function createAssetsLoader(env: RuntimeEnv): AssetLoader {
     const assets = env.ASSETS;
     if (!assets) return null;
     try {
-      const url = new URL(path, 'https://orbitwatch.pages.dev');
+      const url = new URL(path, 'https://skyline.pages.dev');
       const response = await assets.fetch(new Request(url.toString()));
       if (!response.ok) return null;
       return await response.text();
@@ -63,7 +63,7 @@ export function buildServiceContext(env: RuntimeEnv, overrides?: Partial<Service
     // `caches.default` exists in the Workers runtime; fall back to an in-memory
     // map in runtimes without it (the behaviour contract is identical).
     const cacheApi = (globalThis as unknown as { caches?: { default: Cache } }).caches?.default;
-    sharedCache = cacheApi ? createCacheApiCache(cacheApi, 'https://orbitwatch.internal') : createMemoryCache();
+    sharedCache = cacheApi ? createCacheApiCache(cacheApi, 'https://skyline.internal') : createMemoryCache();
   }
   if (!sharedUpstream) {
     sharedUpstream = createUpstreamClient({ baseUrl, timeoutMs, disabled });

@@ -1,5 +1,5 @@
 /**
- * OrbitWatch resilience & accessibility browser checks.
+ * Skyline resilience & accessibility browser checks.
  *
  * Complements the main journey in run.mjs with the failure-mode and keyboard
  * scenarios required for release:
@@ -65,7 +65,7 @@ async function main() {
       await page.setViewport({ width: 1440, height: 900 });
       const pageErrors = [];
       page.on('pageerror', (e) => pageErrors.push(String(e)));
-      await page.goto(BASE_URL, { waitUntil: 'networkidle2', timeout: 60_000 });
+      await page.goto(`${BASE_URL}#/explorer`, { waitUntil: 'networkidle2', timeout: 60_000 });
       await page.waitForSelector('.result-item', { timeout: 30_000 });
 
       let focused = false;
@@ -122,7 +122,7 @@ async function main() {
         if (req.url().includes('/textures/')) req.abort();
         else req.continue();
       });
-      await page.goto(BASE_URL, { waitUntil: 'networkidle2', timeout: 60_000 });
+      await page.goto(`${BASE_URL}#/explorer`, { waitUntil: 'networkidle2', timeout: 60_000 });
       await page.waitForSelector('.result-item', { timeout: 30_000 });
       await sleep(2500);
       const glOk = await page.evaluate(() => {
@@ -160,7 +160,7 @@ async function main() {
           req.continue();
         }
       });
-      await page.goto(BASE_URL, { waitUntil: 'networkidle2', timeout: 60_000 });
+      await page.goto(`${BASE_URL}#/explorer`, { waitUntil: 'networkidle2', timeout: 60_000 });
       await page.waitForSelector('.banner-error', { timeout: 20_000 });
       const errText = await page.$eval('.banner-error', (el) => el.textContent);
       rec('honest error banner shown on API failure', /unreachable|unavailable/i.test(errText ?? ''), (errText ?? '').slice(0, 70));
