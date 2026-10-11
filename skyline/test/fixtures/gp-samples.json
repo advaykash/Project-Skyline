@@ -1,0 +1,121 @@
+{
+  "source": "data/snapshot/groups/*.json (verbatim CelesTrak GP records; see data/snapshot/manifest.json)",
+  "copies": "Records below are byte-identical copies of the corresponding snapshot records.",
+  "items": [
+    {
+      "group": "stations",
+      "note": "ISS — primary reference object",
+      "record": {
+        "OBJECT_NAME": "ISS (ZARYA)",
+        "OBJECT_ID": "1998-067A",
+        "EPOCH": "2026-10-09T22:48:38.797056",
+        "MEAN_MOTION": 15.4879578,
+        "ECCENTRICITY": 0.00066723,
+        "INCLINATION": 51.6315,
+        "RA_OF_ASC_NODE": 92.1575,
+        "ARG_OF_PERICENTER": 244.0714,
+        "MEAN_ANOMALY": 115.9587,
+        "EPHEMERIS_TYPE": 0,
+        "CLASSIFICATION_TYPE": "U",
+        "NORAD_CAT_ID": 25544,
+        "ELEMENT_SET_NO": 999,
+        "REV_AT_EPOCH": 58954,
+        "BSTAR": 0.00013073644,
+        "MEAN_MOTION_DOT": 0.00006711,
+        "MEAN_MOTION_DDOT": 0
+      }
+    },
+    {
+      "group": "stations",
+      "note": "Second space-station object for multi-object tests",
+      "record": {
+        "OBJECT_NAME": "POISK",
+        "OBJECT_ID": "2009-060A",
+        "EPOCH": "2026-10-09T22:48:38.797056",
+        "MEAN_MOTION": 15.4879578,
+        "ECCENTRICITY": 0.00066723,
+        "INCLINATION": 51.6315,
+        "RA_OF_ASC_NODE": 92.1575,
+        "ARG_OF_PERICENTER": 244.0714,
+        "MEAN_ANOMALY": 115.9587,
+        "EPHEMERIS_TYPE": 0,
+        "CLASSIFICATION_TYPE": "U",
+        "NORAD_CAT_ID": 36086,
+        "ELEMENT_SET_NO": 999,
+        "REV_AT_EPOCH": 58633,
+        "BSTAR": 0.00013073644,
+        "MEAN_MOTION_DOT": 0.00006711,
+        "MEAN_MOTION_DDOT": 0
+      }
+    },
+    {
+      "group": "science",
+      "note": "Low-eccentricity science mission",
+      "record": {
+        "OBJECT_NAME": "HST",
+        "OBJECT_ID": "1990-037B",
+        "EPOCH": "2026-10-09T14:00:00.858528",
+        "MEAN_MOTION": 15.31874817,
+        "ECCENTRICITY": 0.00016348,
+        "INCLINATION": 28.4735,
+        "RA_OF_ASC_NODE": 18.0284,
+        "ARG_OF_PERICENTER": 359.2551,
+        "MEAN_ANOMALY": 0.8043,
+        "EPHEMERIS_TYPE": 0,
+        "CLASSIFICATION_TYPE": "U",
+        "NORAD_CAT_ID": 20580,
+        "ELEMENT_SET_NO": 999,
+        "REV_AT_EPOCH": 80612,
+        "BSTAR": 0.00018255319,
+        "MEAN_MOTION_DOT": 0.00006019,
+        "MEAN_MOTION_DDOT": 0
+      }
+    },
+    {
+      "group": "fengyun-1c-debris",
+      "note": "Debris fragment — high mean motion",
+      "record": {
+        "OBJECT_NAME": "FENGYUN 1C",
+        "OBJECT_ID": "1999-025A",
+        "EPOCH": "2026-10-10T05:05:17.210400",
+        "MEAN_MOTION": 14.2731085,
+        "ECCENTRICITY": 0.00121003,
+        "INCLINATION": 98.8561,
+        "RA_OF_ASC_NODE": 358.2344,
+        "ARG_OF_PERICENTER": 287.8265,
+        "MEAN_ANOMALY": 72.1594,
+        "EPHEMERIS_TYPE": 0,
+        "CLASSIFICATION_TYPE": "U",
+        "NORAD_CAT_ID": 25730,
+        "ELEMENT_SET_NO": 999,
+        "REV_AT_EPOCH": 41436,
+        "BSTAR": 0.00049595086,
+        "MEAN_MOTION_DOT": 0.00001169,
+        "MEAN_MOTION_DDOT": 0
+      }
+    },
+    {
+      "group": "weather",
+      "note": "Sun-synchronous weather satellite",
+      "record": {
+        "OBJECT_NAME": "DMSP 5D-3 F16 (USA 172)",
+        "OBJECT_ID": "2003-048A",
+        "EPOCH": "2026-10-10T14:45:50.681952",
+        "MEAN_MOTION": 14.14494308,
+        "ECCENTRICITY": 0.00071989,
+        "INCLINATION": 98.9834,
+        "RA_OF_ASC_NODE": 308.179,
+        "ARG_OF_PERICENTER": 172.157,
+        "MEAN_ANOMALY": 294.3345,
+        "EPHEMERIS_TYPE": 0,
+        "CLASSIFICATION_TYPE": "U",
+        "NORAD_CAT_ID": 28054,
+        "ELEMENT_SET_NO": 999,
+        "REV_AT_EPOCH": 18580,
+        "BSTAR": 0.000049067126,
+        "MEAN_MOTION_DOT": 4.9e-7,
+        "MEAN_MOTION_DDOT": 0
+      }
+    }
+  ]
+}

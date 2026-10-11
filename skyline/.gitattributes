@@ -1,0 +1,6 @@
+# Keep LF line endings on every OS (the page build and its test compare text exactly)
+* text=auto eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.html text eol=lf
+*.datauri text eol=lf

@@ -1,0 +1,26 @@
+// Cloudflare Workers configuration for Project Skyline. Everything here is on the Workers Free plan.
+// First deploy: npx wrangler login, then npx wrangler kv namespace create SKYLINE_KV, paste its id below, then npm run deploy.
+// Optional N2YO cross-check: npx wrangler secret put N2YO_API_KEY (a secret, never in this file). See README.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "project-skyline",
+  "main": "worker/index.mjs",
+  "compatibility_date": "2026-10-01",
+  // public/ is served as static files (free, not counted as Worker requests). Only /api/* runs the Worker.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  // Global store for the downloaded CelesTrak groups (Workers KV free tier: 1,000 writes and 100,000 reads a day).
+  "kv_namespaces": [
+    { "binding": "SKYLINE_KV", "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID" }
+  ],
+  // Downloads only happen here: every 30 minutes the Worker downloads the groups that are due (at most once per 2 hours each).
+  "triggers": { "crons": ["*/30 * * * *"] },
+  "vars": {
+    "CELESTRAK_URL": "https://celestrak.org/NORAD/elements/gp.php",
+    "TIMEOUT_MS": "20000"
+  },
+  "observability": { "enabled": true }
+}

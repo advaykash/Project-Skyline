@@ -1,0 +1,20 @@
+{
+  "name": "project-skyline",
+  "version": "7.0.0",
+  "private": true,
+  "description": "Project Skyline: tracked satellites and space debris on a 3D globe, Orbital POV, and SignalScope, a geometric visibility explorer for internet-constellation satellites. SGP4 from CelesTrak orbital elements, served by a Cloudflare Worker.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/worker.test.mjs test/build.test.mjs test/scope.test.mjs test/frames.test.mjs test/observer.test.mjs test/pov.test.mjs test/labels.test.mjs",
+    "build:page": "node tools/build-page.mjs",
+    "dev": "npm run build:page && wrangler dev --test-scheduled",
+    "deploy": "npm run build:page && wrangler deploy",
+    "fetch-data": "node tools/fetch-celestrak.mjs --out public/data/celestrak.json"
+  },
+  "devDependencies": {
+    "wrangler": "4.145.0"
+  }
+}

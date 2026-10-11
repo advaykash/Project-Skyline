@@ -1,0 +1,6 @@
+# downloaded CelesTrak data (the server's cache) and temporary files
+.cache/
+node_modules/
+*.tmp
+.wrangler/
+.dev.vars

@@ -1,0 +1,916 @@
+<title>Project Skyline</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%227%22 fill=%22%2305080e%22/%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%226%22 fill=%22%235fd0df%22/%3E%3Cellipse cx=%2216%22 cy=%2216%22 rx=%2213%22 ry=%225%22 fill=%22none%22 stroke=%22%238ee3ee%22 stroke-width=%221.6%22 transform=%22rotate(-24 16 16)%22/%3E%3C/svg%3E">
+<meta name="description" content="Project Skyline: tracked satellites and space debris on a live 3D globe, plus SignalScope, an explorer of which internet-constellation satellites are geometrically visible from any place on Earth.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap">
+<style>
+/* Project Skyline. The globe fills the screen and is the centrepiece. A slim toolbar on top, one console panel on the
+   left (a bottom sheet on phones), and in SignalScope mode a timeline dock under the globe.
+   One dark theme: tinted near-black surfaces, cyan for interface and data, amber only for "visible / signal". */
+:root{
+  /* surfaces */
+  --bg:#05080e; --panel:rgba(8,12,20,.94); --panel-solid:#0a1019; --raise:rgba(255,255,255,.035); --raise-2:rgba(255,255,255,.065); --raise-3:rgba(255,255,255,.1);
+  --line:rgba(160,200,230,.09); --line-2:rgba(160,200,230,.18); --line-3:rgba(160,200,230,.3);
+  --shadow:0 10px 30px -14px rgba(0,4,12,.8),0 1px 3px rgba(0,4,12,.4); --inner:inset 0 1px 0 rgba(255,255,255,.045);
+  /* text */
+  --text:#e6edf5; --muted:#93a2b6; --dim:#7f8ca0;
+  /* accents: cyan for the interface, amber for "visible / signal" */
+  --accent:#5fd0df; --accent-hi:#8ee3ee; --accent-soft:rgba(95,208,223,.1); --accent-mid:rgba(95,208,223,.22); --accent-line:rgba(95,208,223,.45);
+  --amber:#f0b35e; --amber-soft:rgba(240,179,94,.12); --amber-line:rgba(240,179,94,.45);
+  /* object types (also used on the globe) */
+  --c-active:#62c6f0; --c-inactive:#b2bccb; --c-rocket:#e8c76a; --c-debris:#f08356; --c-sim:#e86ad0;
+  --c-a:#4fe0cf; --c-b:#f0b35e; --c-you:#ff6b7e;
+  --ok:#66dba3; --warn:#f0c46a; --bad:#ff7486;
+  /* type */
+  --sans:"Geist","IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"Geist Mono","IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  /* layout */
+  --bar-h:58px; --side-w:372px; --gap:12px; --r-lg:10px; --r:8px; --r-sm:6px; --dock-h:132px;
+  /* motion: one language. Quick ease-out for UI, slower only for the camera. */
+  --ease:cubic-bezier(.22,1,.36,1); --t1:140ms; --t2:200ms; --t3:320ms;
+  /* layers */
+  --z-mk:2; --z-panel:5; --z-dock:6; --z-tip:7; --z-load:8; --z-bar:10; --z-tour:25; --z-ovl:30; --z-toast:40;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:14px/1.5 var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased}
+body{background:#04070d}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm)}
+a{color:var(--accent);text-underline-offset:2px}
+a:hover{color:var(--accent-hi)}
+.mono,.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+small{font-size:12px}
+::selection{background:var(--accent-mid)}
+*{scrollbar-width:thin;scrollbar-color:rgba(160,200,230,.18) transparent}
+
+/* canvas + overlays on the globe */
+#c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#c:active{cursor:grabbing}
+#c.scope{cursor:crosshair}
+#ring,.mk{position:fixed;width:26px;height:26px;margin:-13px 0 0 -13px;border:1.5px solid #fff;border-radius:50%;pointer-events:none;display:none;z-index:var(--z-mk);box-shadow:0 0 0 4px rgba(255,255,255,.08)}
+#ring::after{content:"";position:absolute;inset:-7px;border-radius:50%;border:1px solid rgba(255,255,255,.35);animation:ringPulse 2.4s var(--ease) infinite}
+@keyframes ringPulse{0%{transform:scale(.7);opacity:.9}100%{transform:scale(1.5);opacity:0}}
+#ring i,.mk i{position:absolute;left:30px;top:2px;font:500 12px var(--sans);font-style:normal;white-space:nowrap;text-shadow:0 1px 3px #000,0 0 2px #000}
+#ring.left i,.mk.left i{left:auto;right:30px}
+.mk.a{border-color:var(--c-a)} .mk.a i{color:var(--c-a)}
+.mk.b{border-color:var(--c-b)} .mk.b i{color:var(--c-b)}
+#obsTag{position:fixed;z-index:var(--z-mk);pointer-events:none;display:none;transform:translate(14px,-50%);font:500 11px var(--mono);color:var(--amber);letter-spacing:.02em;text-shadow:0 1px 3px #000,0 0 2px #000;white-space:nowrap}
+.hl{position:fixed;transform:translate(9px,-50%);font:500 11px var(--sans);color:#eaf6ff;background:rgba(9,14,23,.72);border:1px solid var(--line-2);border-radius:6px;padding:1px 7px;white-space:nowrap;cursor:pointer;z-index:var(--z-mk);backdrop-filter:blur(4px);transition:background var(--t1) var(--ease),border-color var(--t1) var(--ease)}
+.hl:hover{background:var(--accent-mid);border-color:var(--accent-line)}
+#tip{position:fixed;z-index:var(--z-tip);pointer-events:none;background:var(--panel-solid);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:6px 9px;font-size:12px;display:none;max-width:280px;box-shadow:var(--shadow)}
+#tip b{display:block;font-weight:600}
+#tip .vis{color:var(--amber)}
+
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--raise);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:6px 11px;cursor:pointer;white-space:nowrap;line-height:1.2;
+  transition:background var(--t1) var(--ease),border-color var(--t1) var(--ease),color var(--t1) var(--ease),transform var(--t1) var(--ease)}
+.btn:hover{background:var(--raise-2);border-color:var(--line-3)}
+.btn:active:not(:disabled){transform:scale(.97)}
+.btn.on,.btn[aria-pressed=true]{background:var(--accent-mid);border-color:var(--accent-line);color:var(--accent-hi)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#03141a;font-weight:600}
+.btn.primary:hover{background:var(--accent-hi);border-color:var(--accent-hi)}
+.btn.ghost{background:none;border-color:transparent;color:var(--muted)} .btn.ghost:hover{color:var(--text);background:var(--raise)}
+.btn.danger{border-color:rgba(232,106,208,.38)} .btn.danger:hover{background:rgba(232,106,208,.14)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn[hidden]{display:none}
+.btn.sm{padding:4px 9px;font-size:12px;border-radius:6px}
+.btn.icon{width:34px;height:34px;padding:0;border-radius:50%}
+.row-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+
+.pane{padding:14px 16px 20px;overflow:auto;flex:1;min-height:0}
+.pane[hidden]{display:none}
+.pane.enter{animation:paneIn var(--t2) var(--ease)}
+@keyframes paneIn{from{opacity:0;transform:translateY(6px)}}
+h2{font:500 10.5px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:22px 0 9px;display:flex;align-items:center;gap:8px}
+.pane>h2:first-child,.pane>.first{margin-top:2px}
+h2 .note{text-transform:none;letter-spacing:0;font-family:var(--sans)}
+h3{font-size:16px;font-weight:600;letter-spacing:-.01em;margin:0}
+p{margin:6px 0;text-wrap:pretty}
+.note{color:var(--muted);font-size:12px;line-height:1.5}
+.tag{display:inline-block;font:500 9.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;border:1px solid currentColor;border-radius:4px;padding:0 5px;vertical-align:1px;white-space:nowrap}
+.tag.sim{color:var(--c-sim)} .tag.approx{color:var(--warn)} .tag.real{color:var(--ok)} .tag.no{color:var(--dim)} .tag.geo{color:var(--accent)} .tag.vis{color:var(--amber)}
+.card{background:var(--raise);border-radius:var(--r);padding:12px;box-shadow:var(--inner)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;margin-top:10px}
+.kv span{color:var(--muted);font-size:13px} .kv b{font:500 12.5px var(--mono);font-variant-numeric:tabular-nums;text-align:right;overflow-wrap:anywhere}
+.kv b.txt{font-family:var(--sans);font-weight:400} .kv b small,.kv b .dim{color:var(--muted);font-weight:400} .kv b .warn{color:var(--warn)}
+h2 .src{font:400 11px var(--sans);text-transform:none;letter-spacing:0;color:var(--muted);margin-left:auto}
+.replay{margin-top:14px;padding:12px;border:1px solid var(--line-2);border-radius:var(--r);background:var(--raise)}
+.rp-head{display:flex;align-items:center;gap:8px}.rp-head h3{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
+.rp-body{display:grid;grid-template-columns:1fr;gap:10px;margin-top:8px}
+#skyc{width:100%;max-width:210px;aspect-ratio:1;height:auto;display:block;margin:0 auto}
+.rp-body .kv{margin-top:0;gap:4px 10px}
+.rp-scrub{display:block;margin-top:10px}.rp-scrub input{width:100%;accent-color:var(--accent)}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+.list{display:flex;flex-direction:column;gap:2px}
+.item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 9px;border-radius:var(--r-sm);background:none;border:0;cursor:pointer;text-align:left;width:100%;transition:background var(--t1) var(--ease)}
+button.item:hover,.item.link:hover{background:var(--raise-2)}
+.item small{color:var(--muted)}
+.item .r{text-align:right;font-family:var(--mono);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.item[aria-current=true]{background:var(--amber-soft)}
+.dot{display:inline-block;width:10px;height:10px;flex:none}
+.legend{display:grid;gap:2px}
+.legend label{display:flex;align-items:center;gap:9px;cursor:pointer;padding:4px 2px;border-radius:6px}
+.legend label:hover{background:var(--raise)}
+.legend .cnt{margin-left:auto;color:var(--muted);font:12px var(--mono)}
+.legend .sw{width:22px;height:2px;flex:none;border-radius:1px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.stats .st:first-child{grid-column:1/-1}
+.st{background:var(--raise);border-radius:var(--r-sm);padding:8px 9px;box-shadow:var(--inner)}
+.st b{display:block;font:500 17px var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stats .st:first-child b{font-size:26px}
+.st span{font-size:11px;color:var(--muted)}
+.bars{display:flex;flex-direction:column;gap:7px}
+.bar-row{display:grid;grid-template-columns:44px 1fr 62px;gap:8px;align-items:center;font-size:12px}
+.bar-row .track{height:6px;background:var(--raise-2);border-radius:3px;overflow:hidden}
+.bar-row .fill{height:100%;background:var(--accent);border-radius:3px;transform-origin:left;animation:grow var(--t3) var(--ease)}
+@keyframes grow{from{transform:scaleX(0)}}
+.bar-row .n{text-align:right;font-family:var(--mono);color:var(--muted)}
+#hist{width:100%;height:150px;display:block;cursor:crosshair;border-radius:6px}
+#gt{width:100%;aspect-ratio:2/1;display:block;border-radius:var(--r);background:#0b2236}
+.insight{border-left:2px solid var(--accent-line);padding:3px 0 3px 11px;margin:9px 0}
+.warnbox{border-left:2px solid var(--warn);background:rgba(240,196,106,.06);border-radius:0 var(--r-sm) var(--r-sm) 0;padding:8px 11px;font-size:12px}
+.sep{height:1px;background:var(--line);margin:16px 0}
+input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
+input[type=range]{accent-color:var(--accent);width:100%}
+select{background:var(--raise);border:1px solid var(--line-2);border-radius:6px;padding:3px 6px;font-size:12px}
+select option{background:var(--panel-solid)}
+
+
+/* SignalScope panel */
+.scope-head{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.scope-head h3{display:flex;align-items:center;gap:8px}
+.scope-head h3 svg{color:var(--accent)}
+.scope-head .tag{margin-left:auto}
+.loc-now{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r);background:var(--raise);box-shadow:var(--inner)}
+.loc-now .pin{width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 4px var(--amber-soft);flex:none}
+.loc-now.empty .pin{background:var(--dim);box-shadow:0 0 0 4px rgba(255,255,255,.05)}
+.loc-now b{display:block;font-weight:600}
+.loc-now .mono{font-size:12px;color:var(--muted)}
+.loc-search{max-width:none;margin:8px 0 0;flex:none}
+.metric{margin-top:16px;padding:14px 14px 12px;border-radius:var(--r);background:linear-gradient(180deg,rgba(240,179,94,.075),rgba(240,179,94,.02));box-shadow:inset 0 0 0 1px rgba(240,179,94,.14)}
+.metric-n{display:flex;align-items:flex-end;gap:12px}
+.metric-n b{font:500 46px/0.95 var(--mono);color:var(--amber);letter-spacing:-.04em;font-variant-numeric:tabular-nums;min-width:1.2ch;transition:opacity var(--t1) var(--ease)}
+.metric-n b.tick{animation:tick var(--t2) var(--ease)}
+@keyframes tick{from{opacity:.35;transform:translateY(3px)}}
+.metric-n span{font-size:12px;color:var(--muted);line-height:1.35;padding-bottom:3px}
+.metric-when{margin-top:9px;font:500 11px var(--mono);color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cons{display:flex;flex-wrap:wrap;gap:5px;margin-top:11px}
+.cons button{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);background:none;border-radius:6px;padding:3px 8px;font-size:12px;cursor:pointer;color:var(--muted);transition:all var(--t1) var(--ease)}
+.cons button[aria-pressed=true]{color:var(--text);border-color:var(--accent-line);background:var(--accent-soft)}
+.cons button b{font:500 11px var(--mono);color:var(--amber)}
+.cons button[aria-pressed=false] b{color:var(--dim)}
+.slider{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;font-size:13px}
+.slider output{font:500 13px var(--mono);color:var(--accent-hi)}
+.slider input{grid-column:1/-1}
+.perf{display:grid;gap:6px}
+.perf div{display:grid;grid-template-columns:14px 1fr;gap:3px 10px;padding:9px 11px;border-radius:var(--r-sm);background:var(--raise)}
+.perf i{width:8px;height:8px;border-radius:2px;margin-top:6px}
+.perf b{font-weight:600;font-size:13px}
+.perf p{grid-column:2;margin:0;font-size:12px;color:var(--muted)}
+.perf .geo i{background:var(--accent)} .perf .mod i{background:transparent;box-shadow:inset 0 0 0 1.5px var(--dim)} .perf .meas i{background:transparent;box-shadow:inset 0 0 0 1.5px var(--dim)}
+.perf .na{color:var(--warn);font-weight:500}
+.lg{display:grid;gap:7px;font-size:12px;color:var(--muted)}
+.lg div{display:flex;align-items:center;gap:10px}
+.lg .s{width:18px;height:10px;flex:none;display:grid;place-items:center}
+.lg .s i{display:block}
+.fresh{display:inline-flex;align-items:center;gap:6px;font:500 11px var(--mono)}
+.fresh i{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.fresh.ok i{background:var(--ok)} .fresh.warn i{background:var(--warn)} .fresh.bad i{background:var(--bad)} .fresh.demo i{background:var(--c-sim)}
+.empty-state{padding:14px;border-radius:var(--r);background:var(--raise);font-size:13px;color:var(--muted)}
+.empty-state b{color:var(--text);display:block;margin-bottom:3px}
+.skel{height:12px;border-radius:4px;background:linear-gradient(90deg,var(--raise) 0%,var(--raise-3) 50%,var(--raise) 100%);background-size:200% 100%;animation:shim 1.3s linear infinite;margin:7px 0}
+@keyframes shim{to{background-position:-200% 0}}
+
+/* SignalScope timeline dock */
+#dock[hidden]{display:block;opacity:0;transform:translateY(14px);pointer-events:none;visibility:hidden;transition:opacity var(--t2) var(--ease),transform var(--t2) var(--ease),visibility 0s var(--t2)}
+.dock-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dock-row .grow{flex:1}
+#dkClock{font:500 12.5px var(--mono);font-variant-numeric:tabular-nums}
+#dkClock small{color:var(--muted);font-size:11px;margin-left:6px}
+#dkSpd{display:flex;gap:3px}
+.dock-track{position:relative;margin-top:8px;height:64px;border-radius:var(--r-sm);cursor:ew-resize;touch-action:none;outline-offset:3px}
+.dock-track canvas{width:100%;height:100%;display:block}
+.dock-hover{position:absolute;top:-30px;transform:translateX(-50%);background:var(--panel-solid);border:1px solid var(--line-2);border-radius:6px;padding:2px 7px;font:500 11px var(--mono);white-space:nowrap;pointer-events:none;box-shadow:var(--shadow)}
+.dock-hover[hidden]{display:none}
+.dock-foot{display:flex;align-items:center;gap:10px;margin-top:5px;min-height:20px}
+.dock-foot .note{flex:1}
+.dock-foot .note.warn{color:var(--warn)}
+#dkPlay svg{margin-left:1px}
+#dkPlay[aria-pressed=true] svg{margin-left:0}
+
+/* dialogs and transient UI */
+.overlay{position:fixed;inset:0;z-index:var(--z-ovl);display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(2,5,10,.62);backdrop-filter:blur(3px);animation:fade var(--t2) var(--ease)}
+.overlay[hidden]{display:none}
+@keyframes fade{from{opacity:0}}
+.dialog{background:var(--panel-solid);border:1px solid var(--line-2);border-radius:16px;max-width:660px;width:100%;max-height:min(86vh,820px);overflow:auto;padding:26px 26px 22px;box-shadow:0 30px 80px -10px rgba(0,0,0,.7),var(--inner);animation:rise var(--t3) var(--ease)}
+@keyframes rise{from{opacity:0;transform:translateY(10px) scale(.985)}}
+.dialog h2{margin-top:24px}
+.dialog .x{float:right}
+.dialog table{width:100%;border-collapse:collapse;font-size:13px}
+.dialog td,.dialog th{border-bottom:1px solid var(--line);padding:7px 4px;text-align:left;vertical-align:top}
+.dialog th{color:var(--muted);font-weight:500}
+.tablewrap{overflow-x:auto}
+.lead{font-size:16px;color:var(--text);max-width:56ch}
+.pitch{display:grid;gap:10px;margin:16px 0}
+.pitch div{display:grid;grid-template-columns:120px 1fr;gap:12px}
+.pitch b{color:var(--accent);font-weight:500;font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.06em;padding-top:2px}
+.pitch b.sig{color:var(--amber)}
+.hero-t{font-size:26px;font-weight:600;letter-spacing:-.025em;margin:0 0 4px;display:flex;align-items:center;gap:12px}
+.hero-t svg{color:var(--accent)}
+#loading{position:fixed;z-index:var(--z-load);left:50%;top:50%;transform:translate(-50%,-50%);width:min(380px,calc(100vw - 32px));background:var(--panel-solid);border:1px solid var(--line-2);border-radius:var(--r-lg);padding:18px;box-shadow:var(--shadow);animation:fade var(--t3) var(--ease)}
+#loading[hidden]{display:none}
+#loading b{font-weight:600}
+.prog{height:3px;background:var(--raise-2);border-radius:2px;overflow:hidden;margin:12px 0 10px}
+.prog i{display:block;height:100%;width:100%;background:var(--accent);transform-origin:left;transform:scaleX(0);transition:transform var(--t3) var(--ease)}
+#glfail{position:fixed;z-index:4;left:50%;top:50%;transform:translate(-50%,-50%);width:min(420px,calc(100vw - 32px))}
+#tour[hidden]{display:none}
+#tour .steps{display:flex;gap:4px;margin-bottom:10px}
+#tour .steps i{flex:1;height:2px;border-radius:2px;background:var(--raise-3);transition:background var(--t2) var(--ease)}
+#tour .steps i.on{background:var(--accent)}
+.flash{animation:flash 1.4s ease 2}
+@keyframes flash{50%{box-shadow:0 0 0 3px var(--accent-line)}}
+#toast{position:fixed;z-index:var(--z-toast);left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--panel-solid);border:1px solid var(--line-2);border-radius:var(--r);padding:9px 15px;font-size:13px;display:none;max-width:calc(100vw - 32px);box-shadow:var(--shadow)}
+#toast.show{display:block;animation:toastIn var(--t2) var(--ease)}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,8px)}}
+.chip-band{display:none;align-items:center;gap:6px;margin-top:8px}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+body.scope #credits{display:none}
+.results li .qpov{margin-left:8px;flex:none;font:500 10px var(--mono);letter-spacing:.06em;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:5px;padding:2px 6px;cursor:pointer}
+.results li .qpov:hover{background:var(--accent-mid)}
+#dpop[hidden]{display:none}
+#dpop p{margin:6px 0}
+#dpop .dp-h{display:flex;align-items:center;justify-content:space-between}
+#dpop .dp-chip{font:600 11px var(--mono);letter-spacing:.08em;padding:2px 8px;border-radius:999px;border:1px solid var(--line-2)}
+#dpop .dp-chip[data-mode=live]{color:var(--ok);border-color:rgba(102,219,163,.38)} #dpop .dp-chip[data-mode=stale]{color:#ffc8c2;border-color:rgba(255,120,110,.45)}
+#dpop .dp-chip[data-mode=snapshot],#dpop .dp-chip[data-mode=cached]{color:#f1d6ae;border-color:rgba(240,179,94,.34)} #dpop .dp-chip[data-mode=demo]{border-style:dashed}
+#dpop .dp-g{display:grid;grid-template-columns:1fr auto;gap:3px 12px;margin-top:8px;font-size:12px}
+#dpop .dp-g b{font:12px var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+.info{cursor:help;border-bottom:1px dotted var(--line-3)}
+.ab-count{font-size:13px;color:var(--text)} .ab-count b{font:600 18px var(--mono);font-variant-numeric:tabular-nums;color:var(--accent-hi)} .ab-count small{color:var(--muted)}
+.ab-types{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin:6px 0 4px;color:var(--muted);font-size:12px}
+.ab-src{font-size:11.5px;color:var(--dim);margin-bottom:6px}
+.ab-check{margin-top:8px;padding:9px 11px;border:1px solid var(--line-2);border-radius:var(--r);background:var(--raise)}
+.kpsp{display:block;margin-top:5px}
+.ev{border:1px solid var(--line-2);border-radius:var(--r);padding:10px 12px;margin:8px 0;background:var(--raise)} .ev h3{margin:2px 0 6px;font-size:14px} .ev p{margin:6px 0} .ev-d{font:11px var(--mono);color:var(--muted);letter-spacing:.03em}
+/* Orbital POV heads-up strip */
+#pov[hidden]{display:none}
+#pov .in{pointer-events:auto;max-width:760px;width:100%;background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-lg);padding:10px 12px;box-shadow:var(--shadow);backdrop-filter:blur(8px);display:grid;gap:7px}
+#pov .h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:500 11px var(--mono);letter-spacing:.04em;color:var(--muted)}
+#pov .h b{font:600 13px var(--sans);letter-spacing:0;color:var(--text)}
+#pov .h .k{color:var(--accent);letter-spacing:.08em}
+#povTel{font:12px var(--mono);font-variant-numeric:tabular-nums;color:var(--text);display:flex;flex-wrap:wrap;gap:4px 14px}
+#povTel span{color:var(--dim)}
+#povTel .sh{color:var(--amber)}
+#povCap{font-size:11.5px;color:var(--muted)}
+#pov .ctl{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+#pov .ctl .sp{flex:1}
+#pov .fov{font:11px var(--mono);color:var(--muted);min-width:52px;text-align:center;font-variant-numeric:tabular-nums}
+#pov kbd{font:10px var(--mono);color:var(--dim);margin-left:4px}
+body.pov #ring,body.pov .hl,body.pov #hls{display:none!important}
+/* data state: dot colour plus border and text, so each state reads at a glance without relying on colour alone (the text always names it) */
+#badge[data-mode=live],#badge[data-mode=hosted]{border-color:rgba(102,219,163,.38);color:#bfeed6}
+#badge[data-mode=cached]{border-color:rgba(240,179,94,.34);color:#f1d6ae}
+#badge[data-mode=snapshot]{border-color:rgba(240,179,94,.34);color:#f1d6ae;border-style:dashed}
+#badge[data-mode=stale]{border-color:rgba(255,120,110,.45);color:#ffc8c2}
+#badge[data-mode=demo]{border-style:dashed;color:var(--ink2,#9fb0c6)}
+#badge[data-mode=loading]{color:var(--ink3,#6f8099)}
+#dkNy{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}#dkNy b{font-weight:500;color:var(--dim);letter-spacing:.08em;font-size:10px}
+/* ───────── v7 application shell
+   Top bar (brand, search, data chip) · navigation rail (six sections; a bottom bar on phones) · section panel with an
+   optional sub-nav · contextual inspector on the right · one time bar centred under the globe. layout() in app.js keeps
+   --free-l / --free-r / --free-cx in sync with the globe's free area, and everything floating over the globe uses them. */
+:root{--rail-w:76px;--bar-h:52px;--side-w:344px;--insp-w:340px;--free-l:0px;--free-r:0px;--free-cx:50vw}
+
+/* top bar */
+#bar{position:fixed;left:0;right:0;top:0;z-index:var(--z-bar);display:flex;align-items:center;gap:14px;height:calc(var(--bar-h) + env(safe-area-inset-top,0px));
+  padding:env(safe-area-inset-top,0px) 14px 0 0;background:rgba(5,8,14,.92);border-bottom:1px solid var(--line);backdrop-filter:blur(10px)}
+.brand{display:flex;align-items:center;gap:10px;flex:none;width:var(--rail-w);justify-content:center;color:var(--text);text-decoration:none;height:100%}
+.brand svg{flex:none;color:var(--accent)}
+.brand-n{display:none;font-size:15px;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+.brand:hover{color:var(--text)}
+.crumb{font-size:15px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;color:var(--text);display:flex;align-items:center;gap:10px}
+.crumb::before{content:"Project Skyline";color:var(--muted);font-weight:500}
+.crumb i{font-style:normal;color:var(--line-3);font-weight:400}
+.search{position:relative;flex:1 1 240px;max-width:440px;margin:0 auto}
+.search input{width:100%;height:34px;background:var(--raise);border:1px solid var(--line);border-radius:8px;padding:0 34px 0 34px;outline:none;transition:border-color var(--t1) var(--ease),background var(--t1) var(--ease)}
+.search input::placeholder{color:var(--dim)}
+.search input:hover{border-color:var(--line-2)}
+.search input:focus{border-color:var(--accent-line);background:var(--raise-2)}
+.search>svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+.kbd-hint{position:absolute;right:9px;top:50%;transform:translateY(-50%);font:500 10.5px var(--mono);color:var(--dim);border:1px solid var(--line-2);border-radius:4px;padding:0 5px;pointer-events:none}
+.search input:focus~.kbd-hint{display:none}
+.results{position:absolute;left:0;right:0;top:calc(100% + 6px);margin:0;padding:4px;list-style:none;background:var(--panel-solid);border:1px solid var(--line-2);border-radius:var(--r);max-height:min(60vh,380px);overflow:auto;z-index:20;box-shadow:var(--shadow);animation:pop var(--t2) var(--ease)}
+.results li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 9px;border-radius:var(--r-sm);cursor:pointer}
+.results li[aria-selected=true],.results li:hover{background:var(--accent-soft)}
+.results li small{color:var(--muted);white-space:nowrap}
+.results .empty{display:block;color:var(--muted);cursor:default}
+.results .empty:hover{background:none}
+@keyframes pop{from{opacity:0;transform:translateY(-4px) scale(.985)}}
+#badge{flex:none}
+
+/* navigation rail */
+#rail{position:fixed;z-index:var(--z-bar);left:0;top:calc(var(--bar-h) + env(safe-area-inset-top,0px));bottom:0;width:var(--rail-w);display:flex;flex-direction:column;gap:2px;padding:10px 8px;
+  background:rgba(5,8,14,.92);border-right:1px solid var(--line);backdrop-filter:blur(10px)}
+#rail .nav{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 2px 9px;border-radius:9px;color:var(--muted);text-decoration:none;font-size:10.5px;font-weight:500;letter-spacing:.01em;text-align:center;line-height:1.2;
+  transition:color var(--t1) var(--ease),background var(--t1) var(--ease)}
+#rail .nav svg{width:22px;height:22px;flex:none}
+#rail .nav:hover{color:var(--text);background:var(--raise)}
+#rail .nav[aria-current=page]{color:var(--accent-hi);background:var(--accent-soft)}
+#rail .nav[aria-current=page]::before{content:"";position:absolute;left:-8px;top:12px;bottom:12px;width:2px;border-radius:0 2px 2px 0;background:var(--accent)}
+#rail .nav .long{display:none}
+#rail .nav:focus-visible{outline-offset:-2px}
+
+/* section panel */
+#side{position:fixed;z-index:var(--z-panel);left:calc(var(--rail-w) + var(--gap));top:calc(var(--bar-h) + env(safe-area-inset-top,0px) + var(--gap));bottom:calc(var(--gap) + env(safe-area-inset-bottom,0px));width:var(--side-w);
+  display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);backdrop-filter:blur(8px);min-height:0;box-shadow:var(--shadow),var(--inner)}
+body.sec-learn #side{width:min(600px,calc(100vw - var(--rail-w) - 2*var(--gap) - 200px))}
+body.panel-off #side{display:none}
+.side-h{display:flex;align-items:flex-start;gap:10px;padding:14px 12px 10px 16px;flex:none}
+.side-t{flex:1;min-width:0}
+.side-t h1{margin:0;font-size:17px;font-weight:600;letter-spacing:-.015em;line-height:1.25}
+.side-t p{margin:3px 0 0;font-size:12px;color:var(--muted);line-height:1.45}
+.btn.icon.ghost{width:32px;height:32px;border-radius:8px;color:var(--muted)}
+.btn.icon.ghost:hover{color:var(--text)}
+.subnav{display:flex;gap:2px;margin:0 16px 4px;padding:3px;background:var(--raise);border-radius:9px;flex:none}
+.subnav[hidden]{display:none}
+.subnav button{flex:1;background:none;border:0;border-radius:7px;padding:6px 8px;color:var(--muted);font-size:12.5px;font-weight:500;cursor:pointer;white-space:nowrap;transition:color var(--t1) var(--ease),background var(--t1) var(--ease)}
+.subnav button:hover{color:var(--text)}
+.subnav button[aria-selected=true]{color:var(--text);background:var(--raise-3);box-shadow:var(--inner)}
+.pane{padding:6px 16px 22px;border-top:0}
+.sub[hidden]{display:none}
+.sub.enter{animation:paneIn var(--t2) var(--ease)}
+.pane>h2:first-child,.pane>.first,.sub>h2:first-child{margin-top:10px}
+.hint{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;margin-top:6px;border-radius:var(--r);background:var(--accent-soft);color:var(--text);font-size:12.5px}
+.hint svg{flex:none;color:var(--accent);margin-top:1px}
+.lede{font-size:13.5px;color:var(--text);margin:10px 0 12px}
+.scope-lede{margin-top:6px}
+.loc-card{margin-top:6px;padding:11px 12px;border-radius:var(--r);background:var(--raise);box-shadow:var(--inner)}
+.loc-row{display:flex;gap:9px;align-items:flex-start}
+.loc-row svg{flex:none;color:var(--amber);margin-top:1px}
+.loc-row .note{color:var(--text);font-size:12.5px}
+#p-missions .sub{margin-top:4px}
+.pov-pick{display:grid;gap:8px}
+.pick{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:11px 13px;border-radius:var(--r);background:var(--raise);border:1px solid var(--line);cursor:pointer;transition:background var(--t1) var(--ease),border-color var(--t1) var(--ease)}
+.pick b{font-weight:600;font-size:13.5px}
+.pick:hover:not(:disabled){background:var(--accent-soft);border-color:var(--accent-line)}
+.pick:disabled{opacity:.5;cursor:not-allowed}
+.kv-text{grid-template-columns:auto 1fr}.kv-text b.txt{text-align:left;font-size:12.5px;color:var(--muted)}
+.kv-text kbd,.pick kbd{font:10px var(--mono);color:var(--dim);border:1px solid var(--line-2);border-radius:4px;padding:0 4px;margin-left:4px}
+.sim-target{margin-top:10px;padding:10px 12px;border-radius:var(--r);background:var(--raise);font-size:12.5px;box-shadow:var(--inner)}
+.sim-target b{display:block;font-size:13.5px}
+.tour-card{display:flex;align-items:center;gap:12px;padding:12px 14px;margin-top:6px;border-radius:var(--r);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent-mid)}
+.tour-card>div{flex:1;min-width:0}.tour-card b{display:block;font-weight:600}
+.tour-card .btn svg{margin-right:2px}
+.toc{display:flex;flex-wrap:wrap;gap:4px 6px;margin:14px 0 4px}
+.toc a{font-size:12px;color:var(--muted);text-decoration:none;padding:3px 8px;border-radius:6px;background:var(--raise)}
+.toc a:hover{color:var(--text);background:var(--raise-2)}
+.prose h2{font:600 15px/1.35 var(--sans);text-transform:none;letter-spacing:-.01em;color:var(--text);margin:26px 0 6px;scroll-margin-top:12px}
+.prose p{font-size:13.5px;line-height:1.6;color:#cdd6e2;max-width:68ch}
+.prose table{width:100%;border-collapse:collapse;font-size:12.5px}
+.prose td,.prose th{border-bottom:1px solid var(--line);padding:7px 4px;text-align:left;vertical-align:top}
+.prose th{color:var(--muted);font-weight:500}
+.prose h2.flash{animation:flash 1.4s ease 1}
+
+/* contextual inspector */
+#insp{position:fixed;z-index:var(--z-panel);right:var(--gap);top:calc(var(--bar-h) + env(safe-area-inset-top,0px) + var(--gap));bottom:calc(var(--gap) + env(safe-area-inset-bottom,0px));width:var(--insp-w);
+  display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);backdrop-filter:blur(8px);box-shadow:var(--shadow),var(--inner);animation:inspIn var(--t2) var(--ease)}
+#insp[hidden]{display:none}
+@keyframes inspIn{from{opacity:0;transform:translateX(10px)}}
+.insp-h{display:flex;align-items:center;justify-content:space-between;padding:8px 8px 0 16px;flex:none}
+.eyebrow{font:500 10.5px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--dim)}
+.insp-b{padding:2px 16px 20px;overflow:auto;flex:1;min-height:0}
+.insp-b h2:first-of-type{margin-top:16px}
+body.pov #insp{display:none}
+
+/* globe controls */
+#gctl{position:fixed;z-index:var(--z-panel);right:calc(var(--free-r) + var(--gap));bottom:calc(var(--gap) + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:6px}
+#gctl .btn.icon{width:36px;height:36px;border-radius:9px;background:var(--panel);border-color:var(--line);color:var(--muted);backdrop-filter:blur(8px)}
+#gctl .btn.icon:hover{color:var(--text);border-color:var(--line-3)}
+#gctl .btn[hidden]{display:none}
+body.scope #gctl,body.pov #gctl{display:none}
+
+/* time bar: one row, centred under the globe */
+#time{position:fixed;z-index:var(--z-panel);left:var(--free-cx);translate:-50% 0;bottom:calc(26px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;gap:6px 16px;flex-wrap:wrap;justify-content:center;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 8px 6px 12px;backdrop-filter:blur(8px);box-shadow:var(--shadow),var(--inner);max-width:calc(100vw - var(--free-l) - var(--free-r) - 2*var(--gap) - 50px)}
+#clk{font:500 12px var(--mono);white-space:nowrap;font-variant-numeric:tabular-nums}
+.tmode,#tmode{font:500 10px var(--mono);letter-spacing:.06em;padding:1px 6px;border-radius:4px;border:1px solid currentColor;white-space:nowrap}
+#tmode.live,.tmode.live{color:var(--ok)} #tmode.lapse,.tmode.lapse{color:var(--warn)} #tmode.paused,.tmode.paused{color:var(--muted)} .tmode.fc{color:var(--amber)}
+#spd{display:flex;gap:2px;padding:2px;background:var(--raise);border-radius:8px}
+#spd .btn{border-color:transparent;background:none;padding:3px 8px;font-size:12px}
+#spd .btn:hover{background:var(--raise-2)}
+#spd .btn.on,#spd .btn[aria-pressed=true]{background:var(--raise-3);color:var(--text);border-color:transparent;box-shadow:var(--inner)}
+#time .trow{display:flex;align-items:center;gap:10px}
+#time .telem{display:flex;gap:4px 14px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;padding-left:14px;border-left:1px solid var(--line)}
+#time .telem b{font-weight:500;color:var(--dim);letter-spacing:.08em;font-size:10px}
+#time .telem .dim{color:var(--dim)}
+#time .telem #simOffT{color:var(--amber)}
+#filt{display:flex;align-items:center;gap:8px;flex-basis:100%;justify-content:center}#filt[hidden]{display:none}
+body.scope #time,body.pov #time{display:none}
+
+/* things that float over the globe follow its free area */
+#dock{position:fixed;z-index:var(--z-dock);left:calc(var(--free-l) + var(--gap));right:calc(var(--free-r) + var(--gap));bottom:calc(var(--gap) + env(safe-area-inset-bottom,0px));
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);backdrop-filter:blur(8px);box-shadow:var(--shadow),var(--inner);padding:9px 12px 8px;
+  transition:opacity var(--t3) var(--ease),transform var(--t3) var(--ease)}
+#pov{position:fixed;z-index:var(--z-dock);left:calc(var(--free-l) + var(--gap));right:calc(var(--free-r) + var(--gap));bottom:calc(26px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;pointer-events:none}
+#tour{position:fixed;z-index:var(--z-tour);left:var(--free-cx);translate:-50% 0;bottom:calc(84px + env(safe-area-inset-bottom,0px));width:min(380px,calc(100vw - 2*var(--gap)));background:var(--panel-solid);border:1px solid var(--accent-line);border-radius:var(--r-lg);padding:15px 17px;box-shadow:var(--shadow);animation:rise var(--t3) var(--ease)}
+body.scope #tour{bottom:calc(var(--dock-h) + 2*var(--gap) + env(safe-area-inset-bottom,0px))}
+body.pov #tour{bottom:calc(200px + env(safe-area-inset-bottom,0px))}
+#toast{left:var(--free-cx);bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+body.scope #toast{bottom:calc(var(--dock-h) + 2*var(--gap) + 10px)}
+#credits{position:fixed;left:calc(var(--free-l) + var(--gap));bottom:6px;z-index:2;font:10px/1.3 var(--mono);color:rgba(200,214,232,.45);letter-spacing:.02em;pointer-events:none;max-width:calc(100vw - var(--free-l) - var(--free-r) - 80px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#credits a{pointer-events:auto;color:inherit;text-decoration:underline;text-decoration-color:rgba(200,214,232,.3)}
+body.scope #credits,body.pov #credits{display:none}
+#dpop{position:fixed;z-index:var(--z-tip);width:min(380px,calc(100vw - 24px));max-height:70vh;overflow:auto;background:var(--panel-solid);border:1px solid var(--line-2);border-radius:var(--r-lg);padding:12px 14px;box-shadow:var(--shadow);font-size:12.5px;animation:pop var(--t2) var(--ease)}
+
+/* wide screens: room for the full product name */
+@media (min-width:1280px){.crumb::before{content:none}.crumb{color:var(--muted);font-weight:500}.brand{width:auto;padding-left:22px;justify-content:flex-start}.brand-n{display:inline}.crumb i{color:var(--line-3)}}
+/* narrow desktops: the inspector takes the panel's place while it is open */
+@media (max-width:1199px) and (min-width:721px){
+  :root{--side-w:320px;--insp-w:320px}
+  body.has-insp #side{display:none}
+  #time .telem #nyD{display:none}
+}
+@media (max-width:980px) and (min-width:721px){#time .telem{display:none}}
+
+/* phones: bottom navigation, bottom sheets, compact time strip under the top bar */
+@media (max-width:720px){
+  :root{--gap:8px;--rail-h:58px;--dock-h:112px}
+  #bar{gap:8px;padding-right:10px}
+  .brand{width:46px}
+  .crumb{display:none}
+  .search{max-width:none}
+  .kbd-hint{display:none}
+  #badge{padding:4px 9px}
+  #rail{top:auto;left:0;right:0;bottom:0;width:auto;height:calc(var(--rail-h) + env(safe-area-inset-bottom,0px));flex-direction:row;gap:0;padding:4px 4px env(safe-area-inset-bottom,0px);border-right:0;border-top:1px solid var(--line)}
+  #rail .nav{flex:1;min-width:0;gap:3px;padding:6px 0 5px;font-size:10px;border-radius:8px}
+  #rail .nav span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  #rail .nav .long{display:none}
+  #rail .nav[aria-current=page]::before{left:22%;right:22%;top:-4px;bottom:auto;width:auto;height:2px;border-radius:0 0 2px 2px}
+  #side,body.sec-learn #side{left:0;right:0;width:auto;top:auto;bottom:calc(var(--rail-h) + env(safe-area-inset-bottom,0px));height:min(48vh,440px);border-radius:14px 14px 0 0;border-bottom:0}
+  body.panel-off #side{display:flex;height:auto}
+  body.panel-off #side .pane,body.panel-off #side .subnav{display:none}
+  .side-h{padding:12px 10px 8px 16px}
+  .side-t h1{font-size:15.5px}
+  body.panel-off .side-t p{display:none}
+  #insp{left:0;right:0;width:auto;top:auto;bottom:calc(var(--rail-h) + env(safe-area-inset-bottom,0px));height:min(52vh,470px);border-radius:14px 14px 0 0;border-bottom:0;animation:sheetIn var(--t2) var(--ease)}
+  @keyframes sheetIn{from{opacity:0;transform:translateY(16px)}}
+  body.has-insp #side{display:none}
+  #gctl{right:var(--gap);bottom:auto;top:calc(var(--bar-h) + env(safe-area-inset-top,0px) + 54px)}
+  #bPanel2{display:none!important}
+  #time{left:var(--gap);right:var(--gap);translate:none;top:calc(var(--bar-h) + env(safe-area-inset-top,0px) + 6px);bottom:auto;max-width:none;padding:4px 6px 4px 9px;gap:6px;justify-content:space-between;flex-wrap:nowrap}
+  #time .telem{display:none}
+  #time .trow{gap:6px;flex:1;justify-content:space-between}
+  #spd .btn{padding:3px 6px}
+  #clk{font-size:11px}
+  #filt{display:none}
+  #dock{left:var(--gap);right:var(--gap);bottom:calc(var(--rail-h) + env(safe-area-inset-bottom,0px) + min(48vh,440px) + var(--gap));padding:6px 8px 4px}
+  body.panel-off #dock{bottom:calc(var(--rail-h) + env(safe-area-inset-bottom,0px) + 64px)}
+  .dock-row{gap:6px;flex-wrap:nowrap}
+  #dkSpd,#dkClock small{display:none}
+  .btn.icon{width:30px;height:30px}
+  .dock-track{height:42px;margin-top:5px}
+  .dock-foot{margin-top:2px;min-height:0}
+  .dock-foot .note:not(.warn){display:none}
+  #tour,body.scope #tour,body.pov #tour{left:var(--gap);right:var(--gap);width:auto;translate:none;bottom:auto;top:calc(var(--bar-h) + env(safe-area-inset-top,0px) + 50px)}
+  #toast,body.scope #toast{left:50%;bottom:calc(var(--rail-h) + 16px + env(safe-area-inset-bottom,0px))}
+  #pov{left:0;right:0;bottom:calc(var(--rail-h) + env(safe-area-inset-bottom,0px))}
+  #pov .in{max-width:none;border-radius:14px 14px 0 0;border-bottom:0;padding:10px 12px}
+  body.pov #side{display:none}
+  #pov .btn{min-height:44px;min-width:44px}
+  #pov kbd{display:none}
+  #credits{display:none}
+  .pitch div{grid-template-columns:1fr;gap:0}
+  .dialog{padding:20px 16px}
+  .hero-t{font-size:24px}
+  .metric-n b{font-size:34px}
+  #dkNy{display:none}
+  .tour-card{flex-wrap:wrap}
+}
+@media (max-width:380px){#rail .nav{font-size:9.5px}}
+/* ───────── v7 look: deep navy-black surfaces, one cool accent, quiet controls */
+:root{
+  --bg:#03060b; --panel:rgba(9,13,21,.88); --panel-solid:#0b111b; --raise:rgba(148,178,214,.045); --raise-2:rgba(148,178,214,.08); --raise-3:rgba(148,178,214,.13);
+  --line:rgba(148,178,214,.08); --line-2:rgba(148,178,214,.15); --line-3:rgba(148,178,214,.26);
+  --text:#e8eef6; --muted:#97a6ba; --dim:#7f8ca0;
+  --accent:#6cc7e6; --accent-hi:#a3dcf2; --accent-soft:rgba(108,199,230,.09); --accent-mid:rgba(108,199,230,.2); --accent-line:rgba(108,199,230,.42);
+  --shadow:0 18px 40px -20px rgba(0,3,10,.9),0 2px 6px rgba(0,3,10,.35); --inner:inset 0 1px 0 rgba(255,255,255,.04);
+}
+html,body,body{background:var(--bg)}
+#bar,#rail{background:rgba(4,7,12,.9)}
+#side,#insp,#time,#dock,#pov .in{background:linear-gradient(180deg,rgba(12,17,27,.9),rgba(8,12,19,.9));border-color:var(--line);box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.05)}
+h2{color:#8593a8;letter-spacing:.1em;font-size:10px;margin:24px 0 10px}
+.side-t h1{font-weight:600}
+/* data chip */
+#badge{display:inline-flex;align-items:center;gap:7px;height:28px;border:1px solid var(--line-2);background:var(--raise);border-radius:999px;padding:0 11px;font:500 10.5px var(--mono);letter-spacing:.06em;cursor:pointer;white-space:nowrap;color:var(--muted);transition:background var(--t1) var(--ease),border-color var(--t1) var(--ease)}
+#badge:hover{background:var(--raise-2);border-color:var(--line-3)}
+#badge .d{width:6px;height:6px;border-radius:50%;background:var(--dim);box-shadow:0 0 0 3px rgba(255,255,255,.04)}
+#badge[data-mode=loading] .d{animation:blink 1.2s ease-in-out infinite}
+@keyframes blink{50%{opacity:.25}}
+#badge[data-mode=live] .d,#badge[data-mode=hosted] .d{background:var(--ok);box-shadow:0 0 0 3px rgba(102,219,163,.16)} #badge[data-mode=stale] .d{background:var(--bad)} #badge[data-mode=cached] .d,#badge[data-mode=snapshot] .d{background:var(--warn)} #badge[data-mode=demo] .d{background:var(--c-sim)}
+/* buttons: quieter secondary, one clear primary */
+.btn{background:var(--raise);border-color:var(--line-2);border-radius:7px}
+.btn:hover{background:var(--raise-2);border-color:var(--line-3)}
+.btn.primary{background:linear-gradient(180deg,#7fd2ee,#5ab9da);border-color:transparent;color:#04131b;box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+.btn.primary:hover{background:linear-gradient(180deg,#95dcf3,#6cc7e6)}
+.btn.on,.btn[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-hi)}
+.chips .btn,#sugg .btn,#introSugg .btn{border-radius:999px;padding:4px 11px;font-size:12px;background:none}
+.chips .btn:hover{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-hi)}
+/* checkboxes: small, drawn, not the browser's blue squares */
+input[type=checkbox]{appearance:none;-webkit-appearance:none;width:15px;height:15px;margin:0;flex:none;border:1.5px solid var(--line-3);border-radius:4px;background:transparent;display:inline-grid;place-content:center;cursor:pointer;transition:background var(--t1) var(--ease),border-color var(--t1) var(--ease)}
+input[type=checkbox]::after{content:"";width:8px;height:5px;border:solid #04131b;border-width:0 0 2px 2px;transform:rotate(-45deg) translate(1px,-1px);opacity:0}
+input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
+input[type=checkbox]:checked::after{opacity:1}
+input[type=checkbox]:hover{border-color:var(--accent-line)}
+.legend label{padding:5px 6px;margin:0 -6px}
+.legend .cnt{color:var(--dim);font-size:11.5px}
+/* lists and tiles */
+.item{border-radius:7px}
+button.item:hover,.item.link:hover{background:var(--raise-2)}
+.st,.card,.empty-state,.loc-card,.sim-target,.ev,.ab-check{background:var(--raise);border-color:var(--line)}
+.kv span{color:var(--muted)}
+.hint{background:linear-gradient(90deg,rgba(108,199,230,.1),rgba(108,199,230,.03));box-shadow:inset 0 0 0 1px rgba(108,199,230,.12)}
+/* navigation */
+#rail .nav[aria-current=page]{background:linear-gradient(180deg,rgba(108,199,230,.14),rgba(108,199,230,.06));box-shadow:inset 0 0 0 1px rgba(108,199,230,.16)}
+.subnav{background:rgba(148,178,214,.05);box-shadow:inset 0 0 0 1px var(--line)}
+.subnav button[aria-selected=true]{background:rgba(148,178,214,.12);color:var(--text)}
+.toc a{border:1px solid var(--line);background:none}
+.toc a:hover{border-color:var(--accent-line);color:var(--accent-hi);background:var(--accent-soft)}
+/* globe labels */
+.hl{background:rgba(6,10,17,.78);border-color:var(--line-2);border-radius:5px}
+#time{border-radius:11px}
+.tmode,#tmode{border-radius:5px}
+.overlay{background:rgba(2,4,8,.66)}
+.dialog{background:linear-gradient(180deg,#0e1520,#0a0f18);border-color:var(--line-2)}
+.sim-target .eyebrow{display:block;margin-bottom:3px}
+@media (max-width:440px){#spd .btn:nth-child(5){display:none}#time{padding:4px 4px 4px 8px}#spd .btn{padding:3px 5px}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-explore" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><ellipse cx="12" cy="12" rx="3.6" ry="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3.9 9.2h16.2M3.9 14.8h16.2" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+    <symbol id="i-scope" viewBox="0 0 24 24"><circle cx="12" cy="15.5" r="1.9" fill="currentColor"/><path d="M8.1 11.6a5.5 5.5 0 0 1 7.8 0M5 8.5a9.9 9.9 0 0 1 14 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M12 17.4V21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+    <symbol id="i-missions" viewBox="0 0 24 24"><path d="M3.5 17.5C6 9 13 4.5 20.5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2.2 2.4"/><circle cx="20.2" cy="5" r="1.6" fill="currentColor"/><path d="M8 21s-3.5-3.3-3.5-6a3.5 3.5 0 0 1 7 0c0 2.7-3.5 6-3.5 6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="8" cy="15" r="1.1" fill="currentColor"/></symbol>
+    <symbol id="i-sims" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3M6 6l2.1 2.1M15.9 15.9 18 18M18 6l-2.1 2.1M8.1 15.9 6 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+    <symbol id="i-data" viewBox="0 0 24 24"><path d="M4 20h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6.5 16.5v-5M11 16.5V6.5M15.5 16.5v-7.5M20 16.5v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-learn" viewBox="0 0 24 24"><path d="M12 6.5c-2-1.6-4.8-2-8-1.5v13c3.2-.5 6 0 8 1.5 2-1.5 4.8-2 8-1.5V5c-3.2-.5-6-.1-8 1.5zM12 6.5v13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M4.5 3.8v3.6h3.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9.5 4.5v15" stroke="currentColor" stroke-width="1.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6-5.4-6-10a6 6 0 0 1 12 0c0 4.6-6 10-6 10z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="12" cy="11" r="2" fill="currentColor"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M15.5 15.5l5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+
+<canvas id="c" tabindex="0" aria-label="3D globe of tracked objects. Drag or use arrow keys to rotate, plus and minus to zoom, Shift with drag or arrows to pan."></canvas>
+<div id="ring"><i></i></div><div class="mk a" id="mkA"><i>A</i></div><div class="mk b" id="mkB"><i>B</i></div><div id="obsTag"></div>
+<div id="hls"></div>
+<div id="tip" role="tooltip"></div>
+
+<header id="bar">
+  <a class="brand" href="#/explore" aria-label="Project Skyline: back to Explore">
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5.2" fill="none" stroke="currentColor" stroke-width="1.6"/><ellipse cx="12" cy="12" rx="10.5" ry="4" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".55" transform="rotate(-24 12 12)"/><circle cx="20.6" cy="8.4" r="1.6" fill="#f0b35e"/></svg>
+    <span class="brand-n">Project Skyline</span>
+  </a>
+  <span class="crumb" id="crumb" aria-hidden="true"></span>
+  <div class="search" role="search">
+    <svg width="15" height="15" aria-hidden="true"><use href="#i-search"/></svg>
+    <input id="q" type="search" placeholder="Search satellites and debris: ISS, STARLINK, 25544" autocomplete="off" aria-label="Search satellites and debris by name or catalog number" aria-controls="qres" aria-expanded="false" role="combobox" aria-autocomplete="list">
+    <kbd class="kbd-hint" aria-hidden="true">/</kbd>
+    <ul id="qres" class="results" role="listbox" hidden></ul>
+  </div>
+  <button id="badge" data-mode="loading" aria-haspopup="dialog" aria-expanded="false" aria-controls="dpop" title="Data source and freshness. Click for details."><span class="d"></span><span id="badgeTxt">LOADING</span></button>
+  <div id="dpop" role="dialog" aria-label="Data source" hidden></div>
+</header>
+
+<nav id="rail" aria-label="Sections">
+  <a class="nav" href="#/explore" data-sec="explore"><svg aria-hidden="true"><use href="#i-explore"/></svg><span>Explore</span></a>
+  <a class="nav" href="#/signalscope" data-sec="signalscope"><svg aria-hidden="true"><use href="#i-scope"/></svg><span>SignalScope</span></a>
+  <a class="nav" href="#/missions" data-sec="missions"><svg aria-hidden="true"><use href="#i-missions"/></svg><span>Missions</span></a>
+  <a class="nav" href="#/simulations" data-sec="simulations"><svg aria-hidden="true"><use href="#i-sims"/></svg><span>Simulations</span></a>
+  <a class="nav" href="#/data" data-sec="data"><svg aria-hidden="true"><use href="#i-data"/></svg><span class="long">Compare &amp; Data</span><span class="short">Data</span></a>
+  <a class="nav" href="#/learn" data-sec="learn"><svg aria-hidden="true"><use href="#i-learn"/></svg><span>Learn</span></a>
+</nav>
+
+<aside id="side" aria-labelledby="secT">
+  <div class="side-h">
+    <div class="side-t"><h1 id="secT">Explore</h1><p id="secS"></p></div>
+    <button class="btn icon ghost" id="bPanel" aria-label="Hide panel" aria-expanded="true" aria-controls="side" title="Hide panel (the globe gets the full view)"><svg width="18" height="18" aria-hidden="true"><use href="#i-panel"/></svg></button>
+  </div>
+  <div class="subnav" id="subnav" role="tablist" aria-label="Section views" hidden></div>
+
+  <section class="pane" id="p-explore" data-sec="explore">
+    <div class="hint" id="exHint"><svg width="16" height="16" aria-hidden="true"><use href="#i-explore"/></svg><span>Click any dot on the globe, or search above, to open its details.</span></div>
+    <h2>Featured objects</h2>
+    <div class="chips" id="sugg"></div>
+    <h2>Object types</h2>
+    <div class="legend" id="types"></div>
+    <h2>Orbit regimes</h2>
+    <div class="legend" id="regimes"></div>
+    <div class="chip-band" id="bandChip"><span class="tag approx">filter</span><span id="bandTxt"></span><button class="btn sm" id="bandClear">Clear</button></div>
+    <h2>Display</h2>
+    <label class="legend"><span style="display:flex;gap:9px;align-items:center"><input type="checkbox" id="hlOn" checked> Label notable objects on the globe</span></label>
+    <label class="legend"><span style="display:flex;gap:9px;align-items:center"><input type="checkbox" id="cloudOn"> Decorative clouds (not real weather)</span></label>
+    <h2>Lines and markers</h2>
+    <div class="legend" id="lines"></div>
+    <p class="note"><span class="info" tabindex="0" role="note" aria-label="Dots are drawn far larger than the objects. A satellite is a few metres across; at this scale it would be invisible." title="Dots are drawn far larger than the objects. A satellite is a few metres across; at this scale it would be invisible.">ⓘ Dots are not to scale</span></p>
+  </section>
+
+  <section class="pane" id="p-scope" data-sec="signalscope" hidden>
+    <p class="note scope-lede"><span class="tag geo" title="Counts are geometry only: a satellite above the elevation limit, not a working connection">geometry only</span> Which tracked internet-constellation satellites rise above a place's horizon, and how that changes over time.</p>
+
+    <h2>Location</h2>
+    <div id="scLoc" class="loc-now empty"><span class="pin"></span><span><b>No location selected</b><span class="mono">Click the globe or search for a place</span></span></div>
+    <div class="search loc-search">
+      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 11l4 4" stroke="currentColor" stroke-width="1.8"/></svg>
+      <input id="scQ" type="search" placeholder="City, or coordinates like 47.61, -122.33" autocomplete="off" aria-label="Search for a city or type latitude and longitude" aria-controls="scRes" aria-expanded="false" role="combobox" aria-autocomplete="list">
+      <ul id="scRes" class="results" role="listbox" hidden></ul>
+    </div>
+    <div class="chips" id="scQuick" style="margin-top:8px"></div>
+    <p class="note">Your real location is never needed. Pick any point by hand.</p>
+
+    <div class="metric" aria-live="polite">
+      <div class="metric-n"><b id="scCount">–</b><span>geometrically visible tracked<br>internet-constellation satellites</span></div>
+      <div class="metric-when" id="scWhen"></div>
+      <div class="cons" id="scCons" aria-label="Constellations included in the count"></div>
+    </div>
+
+    <h2>Visibility criteria</h2>
+    <label class="slider" for="scEl"><span>Minimum elevation above the horizon</span><output id="scElOut">25°</output><input type="range" id="scEl" min="0" max="60" step="5" value="25"></label>
+    <p class="note">25° is the minimum elevation SpaceX uses for Starlink user terminals in its FCC filings. Lower values count satellites close to the horizon, where buildings and terrain often block the view.</p>
+
+    <h2>Selected satellite</h2>
+    <div id="scSel"></div>
+
+    <h2>Upcoming visibility windows <span class="tag approx">predicted</span></h2>
+    <div id="scWin"></div>
+
+    <h2>Visible at the shown time</h2>
+    <div id="scVis"></div>
+
+    <h2>Orbital data</h2>
+    <div id="scData"></div>
+
+    <h2>What this number means</h2>
+    <div class="note" style="font-size:12.5px">
+      <p><b style="color:var(--text)">It is:</b> how many tracked satellites from known internet constellations are above the elevation limit at this place and time. Positions come from SGP4 using public orbital elements, the observer sits on the WGS-84 ellipsoid, and Earth's curvature is part of the geometry.</p>
+      <p><b style="color:var(--text)">It is not:</b> proof that a satellite is working, that it serves this region, that a terminal is connected to it, or that service is available or licensed here. Ground stations, beams, capacity and regulation all decide that, and none of them are in the data.</p>
+    </div>
+
+    <h2>Internet performance</h2>
+    <div class="perf">
+      <div class="geo"><i></i><b>Geometric visibility</b><p>Computed here from orbital elements. Shown above.</p></div>
+      <div class="mod"><i></i><b>Modelled estimates</b><p>None. Satellite counts are not turned into speed or latency estimates, because orbit geometry alone cannot support them.</p></div>
+      <div class="meas"><i></i><b>Measured performance</b><p><span class="na">Actual internet performance data unavailable.</span> No trustworthy, location-specific measurements (speed, latency, data usage) are loaded.</p></div>
+    </div>
+
+    <h2>Legend</h2>
+    <div class="lg">
+      <div><span class="s"><i style="width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 3px var(--amber-soft)"></i></span>Satellite above the elevation limit (geometrically visible)</div>
+      <div><span class="s"><i style="width:5px;height:5px;border-radius:50%;background:var(--accent);opacity:.7"></i></span>Other tracked satellites in the selected constellations</div>
+      <div><span class="s"><i style="width:18px;height:2px;background:linear-gradient(90deg,transparent,var(--amber))"></i></span>Track of a visible satellite, 6 minutes back and ahead (highest 24)</div>
+      <div><span class="s"><i style="width:18px;height:0;border-top:1px dashed var(--amber)"></i></span>Line of sight to the highest 32 (geometry only, not a radio link)</div>
+      <div><span class="s"><i style="width:14px;height:8px;border:1px solid var(--accent);border-bottom:0;border-radius:8px 8px 0 0;opacity:.8"></i></span><span id="scDomeLg">Dome: where a satellite at the constellation's typical altitude is above the limit</span></div>
+    </div>
+  </section>
+
+  <section class="pane" id="p-missions" data-sec="missions" hidden>
+    <div class="loc-card">
+      <div class="loc-row"><svg width="16" height="16" aria-hidden="true"><use href="#i-pin"/></svg><div id="where" class="note">No location set.</div></div>
+      <div class="row-btns" style="margin-top:8px"><button class="btn sm" id="geo">Use my location</button><span class="note" style="align-self:center">or click the globe</span></div>
+    </div>
+    <div class="sub" data-sub="overhead">
+      <h2 id="h-above">What’s above me? <span class="src" title="Above the horizon is geometry only: it does not mean an object can be seen by eye or that it provides any service.">computed now</span></h2>
+      <div id="over" class="note">Set a location to see every tracked object above your horizon right now.</div>
+      <div class="row-btns"><button class="btn sm" id="abN2yo" hidden title="Compare with N2YO’s list for your area (uses this site’s N2YO key on the server)">Cross-check with N2YO</button></div>
+      <div id="abCheck" class="note ab-check" hidden aria-live="polite"></div>
+      <h2>Sky conditions</h2>
+      <div id="cond" class="note">Loading…</div>
+    </div>
+    <div class="sub" data-sub="passes" hidden>
+      <h2>Next ISS pass</h2>
+      <div id="issPass" class="note">Set a location first.</div>
+      <div id="replay" class="replay" hidden>
+        <div class="rp-head"><h3 id="rpH">Pass replay</h3><button class="btn sm" id="rpClose" aria-label="Close the pass replay">Close</button></div>
+        <p class="note" id="rpSum"></p>
+        <div class="rp-body">
+          <canvas id="skyc" width="240" height="240" role="img" aria-label="Sky chart: the pass path across your sky, north up. The amber dot is the object at the shown time."></canvas>
+          <div class="kv" id="rpRead" aria-live="off"></div>
+        </div>
+        <label class="rp-scrub"><span class="sr-only">Replay time</span><input type="range" id="rpRange" aria-label="Replay time"></label>
+        <div class="row-btns" style="margin-top:6px"><button class="btn sm" id="rpPlay">Play from rise at 10×</button><button class="btn sm" id="rpPause">Pause</button></div>
+        <p class="note">Orbit-to-Observer replay. Positions are SGP4 predictions from published elements, computed at the replay time. The globe shows the same instant.</p>
+      </div>
+      <p class="note">Passes of any other object are listed in its details. Choose one to replay it here.</p>
+      <h2>Ground track of the selected object</h2>
+      <canvas id="gt" width="720" height="360" aria-label="Map of the selected object's ground track"></canvas>
+      <p class="note">White: the next 2 hours 15 minutes. Faint: the last 45 minutes. Amber dot: your location.</p>
+    </div>
+    <div class="sub" data-sub="pov" hidden>
+      <p class="lede">See Earth from where an object is calculated to be, moving with it on the shared clock.</p>
+      <div class="pov-pick">
+        <button class="pick" id="povIss"><b>From the ISS</b><span class="note" id="povIssTxt">About 420 km up, one orbit every 93 minutes</span></button>
+        <button class="pick" id="povSel"><b>From the selected object</b><span class="note" id="povSelTxt">Select an object first</span></button>
+      </div>
+      <h2>Views</h2>
+      <div class="kv kv-text">
+        <span>Horizon <kbd>1</kbd></span><b class="txt">Looks along the direction of travel, tilted down to the horizon.</b>
+        <span>Nadir <kbd>2</kbd></span><b class="txt">Looks straight down, with the direction of travel at the top.</b>
+        <span>Free look <kbd>3</kbd></span><b class="txt">Drag or use the arrow keys to look around.</b>
+      </div>
+      <p class="note">P enters or leaves the view, the scroll wheel or pinch changes the field of view, and Esc returns to the globe. This is a computed view from orbital elements and texture maps, not spacecraft imagery.</p>
+    </div>
+  </section>
+
+  <section class="pane" id="p-simulations" data-sec="simulations" hidden>
+    <h2>Breakup simulator <span class="tag sim">simulated</span></h2>
+    <p class="note">See how one breakup spreads into a ring of debris. This creates 60 pretend fragments from the selected object. Nothing real is changed, and the fragments are left out of all statistics.</p>
+    <div class="sim-target" id="boomSel"></div>
+    <div class="row-btns"><button class="btn danger" id="bBoom">Simulate a breakup</button><button class="btn" id="bBoomClear" disabled>Clear simulation</button></div>
+    <p class="note" id="boomInfo"></p>
+    <h2>Historic breakups</h2>
+    <p class="note">Three real events behind the debris in this app, adapted from akulbajpai-code/SkyLine (MIT). The facts come from the linked sources. The globe shows where the surviving catalogued fragments are now, propagated from current elements. It does not replay the events.</p>
+    <div class="ev"><p class="ev-d">11 January 2007 · anti-satellite test · about 865 km</p><h3>Fengyun-1C interception</h3>
+      <p>A retired Chinese weather satellite, Fengyun-1C (NORAD 25730), was struck by a ground-launched interceptor. The impact shattered the roughly 750 kg spacecraft into thousands of trackable fragments: the largest single debris cloud in low Earth orbit. At 865 km drag is weak, so most fragments will stay in orbit for decades.</p>
+      <p><button class="btn sm" data-evgroup="fengyun-1c-debris">Show these fragments</button> <small>Sources: <a href="https://orbitaldebris.jsc.nasa.gov/" target="_blank" rel="noopener">NASA Orbital Debris Program Office</a>, <a href="https://celestrak.org/" target="_blank" rel="noopener">CelesTrak</a></small></p></div>
+    <div class="ev"><p class="ev-d">10 February 2009 · accidental collision · about 776 km</p><h3>Iridium 33 and Cosmos 2251</h3>
+      <p>The active communications satellite Iridium 33 (NORAD 24946) collided with the retired Russian satellite Cosmos 2251 (NORAD 22675) over Siberia at roughly 11.6 km/s. It was the first accidental hypervelocity collision between two intact satellites, and both were destroyed. Operators still track and dodge the two debris clouds.</p>
+      <p><button class="btn sm" data-evgroup="cosmos-2251-debris">Show Cosmos 2251 fragments</button> <button class="btn sm" data-evgroup="iridium-33-debris">Show Iridium 33 fragments</button> <small>Sources: <a href="https://orbitaldebris.jsc.nasa.gov/" target="_blank" rel="noopener">NASA ODPO</a>, <a href="https://www.esa.int/Space_Safety" target="_blank" rel="noopener">ESA Space Safety</a></small></p></div>
+    <div class="ev"><p class="ev-d">15 November 2021 · anti-satellite test · about 480 km</p><h3>Cosmos 1408 interception</h3>
+      <p>The retired Soviet satellite Cosmos 1408 (NORAD 13552) was struck by a ground-launched interceptor. Its debris cloud led to precautionary sheltering aboard the International Space Station. CelesTrak no longer publishes a separate group for it, so no fragments are plotted here and none are implied. At lower altitude, drag clears them faster than the 2007 cloud.</p>
+      <p><small>Sources: <a href="https://orbitaldebris.jsc.nasa.gov/" target="_blank" rel="noopener">NASA ODPO</a>, <a href="https://www.esa.int/Space_Safety" target="_blank" rel="noopener">ESA Space Safety</a></small></p></div>
+  </section>
+
+  <section class="pane" id="p-data" data-sec="data" hidden>
+    <div class="sub" data-sub="compare">
+      <h2>Compare two objects</h2>
+      <div id="cmp"></div>
+      <h2>Collision risk</h2>
+      <div class="warnbox"><b>Not supported here.</b> Judging collision risk needs validated conjunction data with position uncertainty, such as CelesTrak <a href="https://celestrak.org/SOCRATES/" target="_blank" rel="noopener">SOCRATES</a> or Space-Track conjunction messages. Project Skyline does not load that data, so it never shows a collision probability. A close approach is two objects passing near each other. A collision means they actually hit.</div>
+      <h2>Why debris is a problem</h2>
+      <p class="note">In low orbit everything moves at about 7.5 km/s, so even a 1 cm fragment hits with the energy of a hand grenade. Every collision makes more fragments, which raises the chance of the next one.</p>
+    </div>
+    <div class="sub" data-sub="stats" hidden>
+      <h2>Loaded objects</h2>
+      <div class="stats" id="tiles"></div>
+      <p class="note" id="countDef"></p>
+      <h2>Altitude distribution <span class="note">(low Earth orbit, 50 km bands)</span></h2>
+      <canvas id="hist" tabindex="0" aria-label="Altitude histogram. Use left and right arrows to move between bands and Enter to show only that band on the globe."></canvas>
+      <div class="chips note" style="gap:10px;margin-top:4px" id="histKey"></div>
+      <p class="note" id="histInfo">Hover or use arrow keys for counts. Click a band to show only it on the globe.</p>
+      <h2>By orbit regime</h2>
+      <div class="bars" id="regBars"></div>
+      <h2>What this data shows</h2>
+      <div id="insights"></div>
+    </div>
+    <div class="sub" data-sub="sources" hidden>
+      <h2>Data freshness</h2>
+      <div class="kv" id="fresh"></div>
+      <h2>Source and checks</h2>
+      <div id="srcBody"></div>
+      <div class="row-btns"><button class="btn" id="bRefresh">Refresh data</button><button class="btn" id="bDemo">Switch to demo data</button><button class="btn ghost" id="bMethod">Methodology</button></div>
+    </div>
+  </section>
+
+  <section class="pane prose" id="p-learn" data-sec="learn" hidden>
+    <div class="tour-card">
+      <div><b>Guided tour</b><span class="note">Nine short steps through the globe, Orbital POV, debris and SignalScope.</span></div>
+      <button class="btn primary" id="bTour"><svg width="12" height="12" aria-hidden="true"><use href="#i-play"/></svg>Start the tour</button>
+    </div>
+    <nav class="toc" aria-label="Learn contents">
+      <a href="#/learn/l-how">How tracking works</a><a href="#/learn/l-sig">How SignalScope works</a><a href="#/learn/l-pov">Orbital POV and pass replay</a><a href="#/learn/l-small">Why small debris is dangerous</a><a href="#/learn/l-reg">Orbit regimes</a><a href="#/learn/l-kess">The Kessler cascade</a><a href="#/learn/l-why">Why this matters</a><a href="#/learn/l-lim">Limits and uncertainty</a><a href="#/learn/l-src">Data sources and methodology</a><a href="#/learn/l-credits">Credits</a><a href="#/learn/l-real">Real, approximate or simulated</a>
+    </nav>
+    <h2 id="l-how">How orbital tracking works</h2>
+    <p>Radar and telescopes on the ground, mainly the US Space Surveillance Network, watch objects as they pass overhead. Analysts fit an orbit to those observations and publish it as a short set of numbers called orbital elements (a TLE or OMM). CelesTrak redistributes these elements for free. To find where an object is at any moment, Project Skyline feeds its elements into SGP4, the standard model made for this data. SGP4 accounts for Earth's bulge and air drag.</p>
+    <h2 id="l-sig">How SignalScope works</h2>
+    <p>SignalScope picks out satellites from known internet constellations by their catalog names (for example STARLINK, ONEWEB, KUIPER), and only if they are on CelesTrak's active list. Debris, rocket bodies and anything with an unrecognised name are never counted. For the chosen place it computes each satellite's elevation above the local horizon: the observer is placed on the WGS-84 ellipsoid, the satellite's SGP4 position is rotated into Earth-fixed coordinates, and the angle is measured against the local vertical, so Earth's curvature is included. The timeline samples the next hours at a fixed step; the count at the shown time is calculated from the current positions. Being above the horizon does not mean a satellite is working, serving that region, or connected to anyone.</p>
+    <h2 id="l-pov">Orbital POV and pass replay</h2>
+    <p><b>Orbital POV</b> puts the camera where an object is calculated to be: its SGP4 position from the latest CelesTrak elements, recomputed every frame at the time shown in the clock (simulator fragments use a simple two-body orbit). The view is drawn in the same space-fixed frame as everything else, with Earth turning under it. <b>Horizon</b> looks along the direction of travel, tilted down to the horizon, which sits about 20° below level from 420 km up. <b>Nadir</b> looks straight down with the direction of travel at the top. <b>Free look</b> lets you turn the view. It is a picture computed from orbital elements and texture maps, not imagery from the spacecraft: the Earth is a cloud-free composite and the city lights are fixed. The older the elements, the further the real object may be from this position (see Element age in the object details).</p>
+    <p><b>Pass replay</b> (Missions, Passes) is the opposite view: it looks up from your location while an object crosses your sky. Rise, peak and set times are found by searching the SGP4 positions down to half a second. Both use the same clock and the same orbit calculations.</p>
+    <h2 id="l-small">Why small debris is dangerous</h2>
+    <p>Speed, not size, makes debris deadly. Two objects in low orbit typically meet at about 10 km/s, which is ten times faster than a rifle bullet. Kinetic energy is ½ × mass × speed², so a 1 cm aluminium ball weighing 1.4 g carries about 70 kJ at 10 km/s. That is roughly the energy of 17 g of TNT. Objects smaller than about 10 cm usually are not tracked at all, and ESA estimates there are around a million fragments between 1 and 10 cm.</p>
+    <h2 id="l-reg">Low, medium and geostationary orbit</h2>
+    <div class="tablewrap"><table>
+      <tr><th>Regime</th><th>Altitude</th><th>One orbit takes</th><th>Used for</th></tr>
+      <tr><td>LEO, low Earth orbit</td><td>up to 2,000 km</td><td>about 90–127 min</td><td>space stations, Earth imaging, Starlink, most debris</td></tr>
+      <tr><td>MEO, medium Earth orbit</td><td>2,000–35,786 km</td><td>2–24 h (GPS: 12 h)</td><td>navigation: GPS, Galileo, GLONASS, BeiDou</td></tr>
+      <tr><td>GEO, geostationary orbit</td><td>35,786 km over the equator</td><td>23 h 56 min, one Earth turn</td><td>weather and TV satellites that stay above one spot</td></tr>
+      <tr><td>HEO, highly elliptical</td><td>swings from low to very high</td><td>varies (Molniya: 12 h)</td><td>coverage of far-north regions</td></tr>
+    </table></div>
+    <h2 id="l-kess">The Kessler cascade</h2>
+    <p>In 1978 NASA scientist Donald Kessler warned that once orbits get crowded enough, collisions create debris faster than air drag removes it, and each collision makes the next more likely. Two events in this data show how fast clouds form. In 2007 an anti-satellite missile test destroyed the Fengyun-1C weather satellite. In 2009 the working Iridium 33 and the dead Cosmos 2251 collided by accident, the first collision between two intact satellites.</p>
+    <h2 id="l-events">When orbits break apart</h2>
+    <p>Three events made most of the catalogued debris in this data: the 2007 Fengyun-1C anti-satellite test, the 2009 collision of Iridium 33 and Cosmos 2251, and the 2021 Cosmos 1408 test. <a href="#/simulations">Simulations</a> has a card for each, with a button that shows the surviving fragments on the globe.</p>
+    <h2 id="l-why">Why this matters</h2>
+    <p><b>Communications:</b> satellite internet, TV and phone links for ships, planes and remote areas. <b>Navigation:</b> GPS gives position and precise time to phones, banks and power grids. <b>Weather:</b> polar and geostationary weather satellites feed every forecast and storm warning. <b>Climate and Earth observation:</b> crops, wildfires, ice and sea level are monitored from orbit. <b>Exploration:</b> astronauts on the ISS have had to move the station out of the way of debris many times. If key orbits fill with fragments, all of these get riskier and more expensive.</p>
+    <h2 id="l-lim">Limits and uncertainty</h2>
+    <p>Positions from public elements are approximate: typically around a kilometre off when the elements are fresh, and drifting by kilometres per day as they age. Each object panel shows its element age. Solar activity changes air drag, which is the biggest source of error in low orbit. Some objects are not in public data, and most debris is too small to track. Project Skyline loads only some CelesTrak groups, so its counts are a subset of the catalog. Optional clouds are decorative, and dots are not to scale.</p>
+    <h2 id="l-src">Data sources and methodology</h2>
+    <div id="srcList"></div>
+    <h2 id="l-credits">Credits</h2>
+    <p>Earth day and night maps: Solar System Scope, licensed CC BY 4.0, based on NASA imagery; renamed and resized for this site, and an ocean mask derived from the day map. Fallback Earth and the 2D map: NASA Earth Observatory (Blue Marble Next Generation, Reto Stöckli, NASA GSFC). Star data: ESA Hipparcos mission (XHIP compilation, via d3-celestial by Olaf Frohn, BSD-3-Clause). Orbital elements: CelesTrak. Libraries: three.js and satellite.js (MIT). Use of these sources does not imply endorsement by NASA, ESA or CelesTrak.</p>
+    <h2 id="l-real">What is real, approximate or simulated</h2>
+    <div class="tablewrap"><table id="realTbl"></table></div>
+  </section>
+</aside>
+
+<aside id="insp" hidden aria-label="Selected object">
+  <div class="insp-h"><span class="eyebrow">Selected object</span><button class="btn icon ghost" id="inspX" aria-label="Close the details and clear the selection" title="Close (clears the selection)"><svg width="16" height="16" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <div class="insp-b" id="sel"></div>
+</aside>
+
+<div id="gctl" role="group" aria-label="Globe controls">
+  <button class="btn icon" id="bReset" aria-label="Reset view" title="Restore the default camera, filters and time"><svg width="17" height="17" aria-hidden="true"><use href="#i-reset"/></svg></button>
+  <button class="btn icon" id="bPanel2" aria-label="Show panel" title="Show the section panel" hidden><svg width="17" height="17" aria-hidden="true"><use href="#i-panel"/></svg></button>
+</div>
+
+<div id="pov" hidden role="region" aria-label="Orbital POV">
+  <div class="in">
+    <div class="h"><span class="k">ORBITAL POV</span><b id="povName"></b><span id="povMeta"></span></div>
+    <div id="povTel" aria-live="off"></div>
+    <div id="povCap">Computed view from orbital elements, not spacecraft imagery.</div>
+    <div class="ctl">
+      <div role="group" aria-label="View" style="display:flex;gap:4px">
+        <button class="btn sm" data-povm="horizon" aria-pressed="true" title="Look along the orbit at the horizon (1)">Horizon<kbd>1</kbd></button>
+        <button class="btn sm" data-povm="nadir" aria-pressed="false" title="Look straight down (2)">Nadir<kbd>2</kbd></button>
+        <button class="btn sm" data-povm="free" aria-pressed="false" title="Drag or use the arrow keys to look around (3)">Free look<kbd>3</kbd></button>
+      </div>
+      <div role="group" aria-label="Field of view" style="display:flex;align-items:center;gap:2px">
+        <button class="btn sm" id="povZin" aria-label="Narrower field of view">−</button><span class="fov" id="povFov"></span><button class="btn sm" id="povZout" aria-label="Wider field of view">+</button>
+      </div>
+      <span class="sp"></span>
+      <button class="btn sm" id="povExit" title="Back to the globe (Esc or P)">Exit POV<kbd>Esc</kbd></button>
+    </div>
+  </div>
+</div>
+
+<div id="time" aria-label="Time controls">
+  <div class="trow"><span id="tmode" class="live">REAL TIME</span><span id="clk" class="mono"></span>
+  <div id="spd"></div></div>
+  <div class="telem mono" id="telem"><span title="Reference clock: real current time in New York (America/New_York), not the simulation time and not your location"><b>NEW YORK</b> <span id="nyT">--:--:--</span> <span id="nyZ"></span> <span id="nyD" class="dim"></span></span><span id="simOff" hidden title="How far the simulation clock is from real time"><b>SIM</b> <span id="simOffT"></span></span><span id="sunInfo" title="Subsolar point: where the Sun is overhead at the simulation time. The globe’s day and night follow it (computed, not observed)."><b>SUN</b> <span id="sunT"></span></span></div>
+  <div id="filt" hidden><span id="filtTxt" class="note"></span> <button class="btn sm" id="filtClear">Clear filters</button></div>
+</div>
+
+<div id="dock" hidden role="region" aria-label="SignalScope timeline">
+  <div class="dock-row">
+    <button class="btn icon" id="dkPlay" aria-label="Play the prediction" aria-pressed="false"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 1.5v9l8-4.5z" fill="currentColor"/></svg></button>
+    <span id="dkMode" class="tmode live">NOW</span>
+    <span id="dkClock"></span>
+    <span id="dkNy" class="mono" title="Real current time in New York (America/New_York). Independent of the simulation time."><b>NEW YORK</b> <span id="dkNyT"></span></span>
+    <span class="grow"></span>
+    <div id="dkSpd" role="group" aria-label="Playback speed"></div>
+    <select id="dkRange" aria-label="Prediction window length"><option value="3">3 h</option><option value="6" selected>6 h</option><option value="12">12 h</option></select>
+    <button class="btn sm" id="dkNow" title="Jump to the current time">Now</button>
+  </div>
+  <div class="dock-track" id="dkTrack" role="slider" tabindex="0" aria-label="Prediction time. Left and right arrows move one step, Page Up and Page Down move 30 minutes." aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <canvas id="dkCv"></canvas>
+    <div class="dock-hover" id="dkHover" hidden></div>
+  </div>
+  <div class="dock-foot"><span class="note" id="dkInfo"></span><button class="btn sm" id="dkRecalc" hidden>Recompute from the shown time</button></div>
+</div>
+
+<div id="loading" role="status" aria-live="polite">
+  <b id="ldTitle">Loading orbital data</b>
+  <div class="prog"><i id="ldBar"></i></div>
+  <div class="note" id="ldText">Starting…</div>
+  <div class="row-btns" id="ldSkip" hidden><button class="btn sm" id="bSkip">Use demo data instead</button></div>
+</div>
+<div id="glfail" class="card" hidden role="alert"><b>3D view unavailable</b><p class="note" id="glfailTxt"></p></div>
+
+<div class="overlay" id="intro" hidden role="dialog" aria-modal="true" aria-labelledby="introH">
+  <div class="dialog">
+    <h3 id="introH" class="hero-t"><svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5.2" fill="none" stroke="currentColor" stroke-width="1.5"/><ellipse cx="12" cy="12" rx="10.5" ry="4" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".55" transform="rotate(-24 12 12)"/><circle cx="20.6" cy="8.4" r="1.6" fill="#f0b35e"/></svg>Project Skyline</h3>
+    <p class="lead">See where tracked satellites and space debris are right now, and explore the invisible infrastructure overhead.</p>
+    <div class="pitch">
+      <div><b>Problem</b><span>Thousands of satellites and pieces of debris share the same orbits. Fragments hit at around 10 km/s, and every collision creates more.</span></div>
+      <div><b>Solution</b><span>Project Skyline loads public orbital data, computes each object's position with the standard SGP4 model, and puts them on one globe you can explore.</span></div>
+      <div><b class="sig">SignalScope</b><span>Pick any place on Earth and watch which internet-constellation satellites rise above its horizon over the next hours. It shows geometry, not service, and says so.</span></div>
+    </div>
+    <p class="note" id="introData"></p>
+    <h2>Start with one of these</h2>
+    <div class="chips" id="introSugg"></div>
+    <div class="row-btns" style="margin-top:18px"><button class="btn primary" id="iTour">Take the 60-second tour</button><button class="btn" id="iScope">Open SignalScope</button><button class="btn ghost" id="iClose">Explore on my own</button></div>
+  </div>
+</div>
+
+<div id="tour" hidden role="dialog" aria-labelledby="tourH" aria-live="polite">
+  <div class="steps" id="tourSteps"></div>
+  <b id="tourH"></b>
+  <p id="tourTxt" style="margin:6px 0 12px"></p>
+  <div class="row-btns" style="margin-top:0"><button class="btn sm" id="tPrev">Back</button><button class="btn sm primary" id="tNext">Next</button><button class="btn sm ghost" id="tEnd" style="margin-left:auto">End tour</button></div>
+</div>
+<div id="credits">Earth: <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noopener">Solar System Scope</a> (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>), based on NASA Blue Marble · Stars: ESA Hipparcos · Orbits: CelesTrak</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/satellite.js@6.0.2/dist/satellite.min.js"></script>
+<script>
+/*__APP_JS__*/
+</script>

@@ -1,0 +1,21 @@
+# DigitalOcean App Platform spec for Project Skyline (the app and repository keep the name orbitwatch).
+# Before using it, change github.repo to your own repository. Create the app with:
+#   doctl apps create --spec .do/app.yaml
+# Or create it in the control panel and copy these settings (see README.md).
+name: orbitwatch
+region: nyc
+services:
+  - name: web
+    github:
+      repo: YOUR-GITHUB-USERNAME/orbitwatch
+      branch: main
+      deploy_on_push: true
+    environment_slug: node-js
+    run_command: npm start
+    http_port: 8080
+    # Keep this at 1. CelesTrak allows one download per IP address per data update, and each
+    # instance would keep its own cache and download separately.
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    health_check:
+      http_path: /api/health
