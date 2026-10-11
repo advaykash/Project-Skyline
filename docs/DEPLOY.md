@@ -18,7 +18,8 @@ separate backend host, no Node.js server.
 | Build output directory | `dist` |
 | Root directory | *(repository root)* |
 
-Pages detects `functions/` automatically.
+Pages detects `functions/` automatically. The repository ships `.nvmrc` (Node 22) and an
+`engines` field, so Pages selects a compatible Node version without extra configuration.
 
 **Option B — Direct upload**
 
