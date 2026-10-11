@@ -57,7 +57,7 @@ export interface GroupStatus {
 
 export interface HealthResponse {
   ok: true;
-  service: 'orbitwatch-api';
+  service: 'skyline-api';
   runtime: string;
   provider: 'CelesTrak';
   providerUrl: string;

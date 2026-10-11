@@ -1,5 +1,5 @@
 /**
- * OrbitWatch end-to-end browser test.
+ * Skyline end-to-end browser test.
  *
  * Drives the *running application* (Cloudflare Pages runtime via
  * `wrangler pages dev`, or the Vite dev server) with a real Chromium, exercises
@@ -91,10 +91,22 @@ async function main() {
     console.log('\n[1] Opening the application');
     await page.goto(BASE_URL, { waitUntil: 'networkidle2', timeout: 60_000 });
     record('page loads', true, await page.title());
+    await page.waitForSelector('.hero', { timeout: 20_000 });
+    const heroTitle = await page.$eval('.hero-content h1', (el) => el.textContent);
+    record('hero introduces Skyline', /Every dot/.test(heroTitle ?? ''), heroTitle?.trim());
+    await shot(page, '00-home');
+
+    // Enter the explorer through the primary call to action.
+    await page.evaluate(() => {
+      const btns = [...document.querySelectorAll('.hero-actions .btn')];
+      btns[0]?.click();
+    });
+    await page.waitForSelector('.globe-canvas', { timeout: 20_000 });
+    const hash = await page.evaluate(() => window.location.hash);
+    record('Explore the globe opens the explorer', hash.includes('explorer'), hash);
 
     // --- 2. WebGL / globe --------------------------------------------------
     console.log('\n[2] Globe & WebGL');
-    await page.waitForSelector('.globe-canvas', { timeout: 20_000 });
     await sleep(2500); // allow the first worker tick + texture load
     const gl = await page.evaluate(() => {
       const canvas = document.querySelector('.globe-canvas');
@@ -244,6 +256,29 @@ async function main() {
     await page.setViewport({ width: 768, height: 1024, deviceScaleFactor: 1 });
     await sleep(1200);
     await shot(page, '07-tablet');
+
+    // --- 9b. Routed views --------------------------------------------------
+    console.log('\n[9b] Sky, weather, events and about routes');
+    await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+    await page.goto(`${BASE_URL}#/sky`, { waitUntil: 'networkidle2', timeout: 60_000 });
+    await page.waitForSelector('.sky-page', { timeout: 20_000 });
+    await sleep(1500);
+    record('sky route renders replay workspace', true);
+    await shot(page, '12-sky');
+    await page.goto(`${BASE_URL}#/weather`, { waitUntil: 'networkidle2', timeout: 60_000 });
+    await page.waitForSelector('.weather-page', { timeout: 20_000 });
+    await sleep(1500);
+    record('weather route renders', true);
+    await shot(page, '13-weather');
+    await page.goto(`${BASE_URL}#/events`, { waitUntil: 'networkidle2', timeout: 60_000 });
+    await page.waitForSelector('.events-page', { timeout: 20_000 });
+    await sleep(800);
+    record('events route renders', true);
+    await shot(page, '14-events');
+    await page.goto(`${BASE_URL}#/about`, { waitUntil: 'networkidle2', timeout: 60_000 });
+    await page.waitForSelector('.about-page', { timeout: 20_000 });
+    record('about route renders', true);
+    await shot(page, '15-about');
 
     // --- 10. Console cleanliness -------------------------------------------
     console.log('\n[10] Console & network hygiene');

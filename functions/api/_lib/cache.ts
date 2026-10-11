@@ -29,10 +29,10 @@ export interface CatalogCache {
   put(group: string, payload: CachedPayload): Promise<void>;
 }
 
-const HEADER_PREFIX = 'x-orbitwatch-';
+const HEADER_PREFIX = 'x-skyline-';
 
 export function createCacheApiCache(cache: Cache, baseOrigin: string): CatalogCache {
-  const keyFor = (group: string) => new URL(`/__orbitwatch-cache/gp/${encodeURIComponent(group)}`, baseOrigin).toString();
+  const keyFor = (group: string) => new URL(`/__skyline-cache/gp/${encodeURIComponent(group)}`, baseOrigin).toString();
 
   return {
     async get(group) {

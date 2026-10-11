@@ -1,9 +1,9 @@
 {
-  "name": "orbitwatch",
+  "name": "skyline",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "OrbitWatch \u2014 satellite tracking and orbital visualization on genuine CelesTrak GP data with SGP4 propagation.",
+  "description": "Skyline \u2014 satellite tracking and orbital visualization on genuine CelesTrak GP data with SGP4 propagation.",
   "license": "MIT",
   "engines": {
     "node": ">=20"

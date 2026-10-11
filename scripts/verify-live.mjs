@@ -22,7 +22,7 @@ function record(name, ok, detail = '') {
 }
 
 async function main() {
-  console.log(`OrbitWatch live-data verification against ${BASE_URL}\n`);
+  console.log(`Skyline live-data verification against ${BASE_URL}\n`);
 
   // 1. Health
   const health = await (await fetch(`${BASE_URL}/api/health`)).json();

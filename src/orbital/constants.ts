@@ -1,5 +1,5 @@
 /**
- * OrbitWatch — physical constants and frame conventions.
+ * Skyline — physical constants and frame conventions.
  *
  * FRAME AND UNIT CONVENTIONS (used consistently everywhere in this codebase)
  * ---------------------------------------------------------------------------

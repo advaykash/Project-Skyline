@@ -1,5 +1,5 @@
 /**
- * The OrbitWatch 3D scene.
+ * The Skyline 3D scene.
  *
  * FRAME: the scene is Earth-fixed (see src/orbital/constants.ts). The Earth mesh
  * never rotates; satellites and orbit paths are transformed from ECEF by the
@@ -323,7 +323,7 @@ export class GlobeEngine {
       if (this.layers) this.setLayers(this.layers);
     } catch (error) {
       // Textures are enhancement only; the scene works without them.
-      console.warn('[OrbitWatch] Earth textures failed to load; using the fallback surface.', error);
+      console.warn('[Skyline] Earth textures failed to load; using the fallback surface.', error);
     }
   }
 
@@ -350,12 +350,12 @@ export class GlobeEngine {
   private onContextLost = (event: Event): void => {
     event.preventDefault();
     this.contextLost = true;
-    console.warn('[OrbitWatch] WebGL context lost — rendering paused until the browser restores it.');
+    console.warn('[Skyline] WebGL context lost — rendering paused until the browser restores it.');
   };
 
   private onContextRestored = (): void => {
     this.contextLost = false;
-    console.info('[OrbitWatch] WebGL context restored — resuming rendering.');
+    console.info('[Skyline] WebGL context restored — resuming rendering.');
     // The restored context starts with a fresh default framebuffer, so the
     // drawing-buffer size and projection have to be re-derived.
     this.onResize();
@@ -427,12 +427,12 @@ export class GlobeEngine {
       return;
     }
     if (message.type === 'error') {
-      console.error('[OrbitWatch] propagation worker error:', message.message);
+      console.error('[Skyline] propagation worker error:', message.message);
     }
   };
 
   private onWorkerError = (event: ErrorEvent): void => {
-    console.error('[OrbitWatch] propagation worker failed:', event.message);
+    console.error('[Skyline] propagation worker failed:', event.message);
     this.options.callbacks.onWorkerStatus({ ready: false, failures: 0, lastTickMs: null });
   };
 
@@ -490,7 +490,7 @@ export class GlobeEngine {
       try {
         this.selectedSatrec = buildSatrec(this.selectedRecord);
       } catch (error) {
-        console.error('[OrbitWatch] cannot build a propagator for the selection:', error);
+        console.error('[Skyline] cannot build a propagator for the selection:', error);
         this.selectedSatrec = null;
       }
     }

@@ -66,7 +66,7 @@ export const onRequestGet: PagesFunction<RuntimeEnv> = async (context) => {
   const result = await getCatalog(buildServiceContext(env), group);
   if (!result.ok) return json(result.error, result.httpStatus);
   return json(result.response, result.httpStatus, {
-    'x-orbitwatch-state': result.response.state,
+    'x-skyline-state': result.response.state,
   });
 };
 

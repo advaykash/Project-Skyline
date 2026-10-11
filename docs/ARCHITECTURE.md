@@ -1,4 +1,4 @@
-# OrbitWatch architecture
+# Skyline architecture
 
 ## Data pipeline (end to end)
 
@@ -10,7 +10,7 @@ functions/api/gp.ts  ──  group allowlist (shared/catalog-groups.json)
         │                payload validation (JSON array, required fields, ranges)
         │                bounded timeout (6 s) + one retry + per-isolate coalescing
         ▼
-Cache API entry  ──/__orbitwatch-cache/gp/<group>──  body + retrieval-time + SHA-256
+Cache API entry  ──/__skyline-cache/gp/<group>──  body + retrieval-time + SHA-256
         │
         │  (cache older than 2 h → refresh; refresh failure → keep last genuine payload;
         │   no payload at all → bundled snapshot in dist/snapshot/, labelled "snapshot")
@@ -30,6 +30,8 @@ src/globe/GlobeEngine.ts   one THREE.Points draw call for the whole catalogue
             → marker highlight and its buffer vertex, DOM label, orbit path, ground track
 src/ui/Inspector.tsx       the same propagateState path, one SGP4 call per 200 ms tick,
                            stamped with the instant it was computed for
+src/ui/SkyView.tsx         pass list + sky chart + readouts, all from lookAnglesAt()
+                           at the shared clock — one selection, one observer, one time
 ```
 
 ## Frames, units and datums (the audit trail)
@@ -110,3 +112,39 @@ so the deployment stays within the free tier. Rate limiting is a per-isolate sli
 (documented backstop). Configuration (`CELESTRAK_BASE`, `UPSTREAM_TIMEOUT_MS`,
 `UPSTREAM_DISABLED`) comes from environment bindings only — never from request input, so the
 API cannot be used as an open proxy.
+
+## Routed shell
+
+The app is hash-routed (`src/ui/routes.ts`: `#/`, `#/explorer`, `#/sky`, `#/weather`, `#/events`,
+`#/about`) so every view works from a static Pages deployment with no redirect rules. Catalogue,
+selection, observer, replay pass and clock live in the shared store (`src/state/store.ts`), so
+the globe, inspector, sky chart and pass list can never disagree about object, location or time.
+The WebGL engine mounts only on the explorer route and releases the clock pump on dispose.
+
+## Observer pipeline (Orbit-to-Observer Replay)
+
+```
+selected record ──► buildSatrec ──► predictPasses (coarse scan + bisection refine)
+        │                                     │
+        │                                     ▼
+        │                              pass list (rise/peak/set, max el, dirs)
+        │                                     │
+        └──── shared observer + clock ──► lookAnglesAt @ clock ──► sky chart
+                                                                ├─► az/el/range readouts
+                                                                ├─► eclipse + darkness
+                                                                └─► globe marker (same instant)
+```
+
+No interpolation anywhere: scrubbing the replay sets the authoritative clock, and every view
+re-evaluates SGP4 at that instant. Pass windows are keyed by object + observer + hour so observer
+edits invalidate predictions while clock ticks do not.
+
+## Secondary APIs
+
+- `GET /api/weather?lat=..&lon=..` — Open-Meteo hourly cloud cover, coordinates validated and
+  rounded, 30-minute edge cache (`functions/api/weather.ts`).
+- `GET /api/kp` — NOAA SWPC planetary Kp series, 15-minute edge cache (`functions/api/kp.ts`).
+- Both are built on the allowlisted proxy helper (`functions/api/_lib/proxy.ts`): fixed upstream
+  hosts only, bounded timeout, no retries, honest 502s. Frontend clients
+  (`src/data/weather.ts`, `src/data/spaceweather.ts`) validate responses and surface typed
+  unavailability so the UI renders "unavailable" instead of guessing.

@@ -138,7 +138,7 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
               <div className="banner-title">No usable position at this time</div>
               <div>{describePropagationFailure(liveState.error)}</div>
               <div className="field-note">
-                No position is shown instead — OrbitWatch never substitutes invented coordinates for a failed
+                No position is shown instead — Skyline never substitutes invented coordinates for a failed
                 propagation.
               </div>
             </div>

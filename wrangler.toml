@@ -1,4 +1,4 @@
-# Cloudflare Pages configuration for OrbitWatch.
+# Cloudflare Pages configuration for Skyline.
 #
 # Deployment is either:
 #   • Cloudflare Pages Git integration (build command `npm run build`,
@@ -8,7 +8,7 @@
 #
 # See docs/DEPLOY.md for the full guide. No paid resources are required:
 # the API uses the Pages runtime plus the Cache API; no KV, no Durable Objects.
-name = "orbitwatch"
+name = "skyline"
 compatibility_date = "2026-10-06"
 pages_build_output_dir = "dist"
 

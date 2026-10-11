@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+/**
+ * Skyline application shell: routing, shared catalogue loading and layout.
+ *
+ * The catalogue, selection, observer, replay pass and simulation clock are
+ * owned here (in the store) and shared by every route, so the globe, the
+ * inspector, the sky chart and the pass list can never disagree about which
+ * object, location or instant they describe.
+ */
+import { useCallback, useEffect, useRef } from 'react';
 import type { GpResponse, HealthResponse } from '../shared/contracts';
 import { ApiRequestError, fetchCatalog, fetchHealth } from './data/api';
 import {
@@ -7,45 +15,39 @@ import {
   setState,
   useStore,
   type CatalogState,
-  type LayerVisibility,
+  type Route,
 } from './state/store';
 import { advance as advanceClock, claimPump, releasePump } from './state/clock';
-import { GlobeEngine } from './globe/GlobeEngine';
-import { loadEarthTextures } from './globe/textures';
-import { Header } from './ui/Header';
-import { SearchPanel } from './ui/SearchPanel';
-import { Inspector } from './ui/Inspector';
-import { TimeBar } from './ui/TimeBar';
+import { loadStoredObserver } from './state/observer';
 import type { GpRecord } from './orbital/types';
+import { Explorer } from './ui/Explorer';
+import { HomeView } from './ui/HomeView';
+import { SkyView } from './ui/SkyView';
+import { WeatherView } from './ui/WeatherView';
+import { EventsView } from './ui/EventsView';
+import { AboutView } from './ui/AboutView';
+import { SiteFooter, SiteHeader } from './ui/SiteHeader';
+import { hashForRoute, navigate, routeFromHash } from './ui/routes';
 
 const DEFAULT_GROUP = 'stations';
-/** NORAD catalogue number of the ISS (ZARYA) — the object the app opens on. */
+/** NORAD catalogue number of the ISS (ZARYA). */
 const ISS_NORAD_ID = 25544;
 
 export function App() {
+  const route = useStore((s) => s.route);
   const catalog = useStore((s) => s.catalog);
   const catalogLoading = useStore((s) => s.catalogLoading);
   const catalogError = useStore((s) => s.catalogError);
   const health = useStore((s) => s.health);
-  const selectedNoradId = useStore((s) => s.selectedNoradId);
-  const searchQuery = useStore((s) => s.searchQuery);
-  const layers = useStore((s) => s.layers);
-  const followSelection = useStore((s) => s.followSelection);
   const webglFailed = useStore((s) => s.webglFailed);
   const toasts = useStore((s) => s.toasts);
-  const leftOpen = useStore((s) => s.leftPanelOpen);
-  const rightOpen = useStore((s) => s.rightPanelOpen);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const labelLayerRef = useRef<HTMLDivElement>(null);
-  const engineRef = useRef<GlobeEngine | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  /** Startup selection happens once, on the first catalogue that contains the ISS. */
   const autoSelectedRef = useRef(false);
 
   /* ------------------------------------------------------------ data load */
 
-  const loadCatalogGroup = useCallback(async (group: string) => {
+  const loadCatalogGroup = useCallback(async (group: string): Promise<CatalogState | null> => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -62,9 +64,6 @@ export function App() {
         const keepsSelection =
           s.selectedNoradId !== null &&
           next.records.some((r) => Number(r.NORAD_CAT_ID) === s.selectedNoradId);
-        // Open on the ISS: the station group is the default view, and having a
-        // real object selected from the first frame makes the inspector,
-        // orbit path and ground track immediately meaningful.
         const autoSelect =
           !keepsSelection &&
           !autoSelectedRef.current &&
@@ -77,7 +76,6 @@ export function App() {
           selectedNoradId: keepsSelection ? s.selectedNoradId : autoSelect ? ISS_NORAD_ID : null,
         };
       });
-      engineRef.current?.setCatalog(next.records, next.group);
       if (response.state !== 'live') {
         pushToast(
           response.state === 'snapshot'
@@ -85,8 +83,9 @@ export function App() {
             : `Serving ${response.state} CelesTrak data (${response.provenance.retrievedAt ?? 'unknown retrieval'}).`,
         );
       }
+      return next;
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return;
+      if (error instanceof DOMException && error.name === 'AbortError') return null;
       const apiError = error instanceof ApiRequestError ? error : null;
       setState({
         catalogLoading: false,
@@ -96,8 +95,31 @@ export function App() {
           code: apiError?.code,
         },
       });
+      return null;
     }
   }, []);
+
+  // Initial route from the URL hash, kept in sync afterwards.
+  useEffect(() => {
+    setState({ route: routeFromHash(window.location.hash), observer: loadStoredObserver() });
+    const onHashChange = () => {
+      setState({ route: routeFromHash(window.location.hash), leftPanelOpen: false, rightPanelOpen: false });
+      window.scrollTo({ top: 0 });
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  // Keep the hash in sync when navigation happens programmatically.
+  const onNavigate = useCallback(
+    (next: Route) => {
+      if (getState().route === next && window.location.hash === hashForRoute(next)) return;
+      setState({ route: next, leftPanelOpen: false, rightPanelOpen: false });
+      window.scrollTo({ top: 0 });
+      if (window.location.hash !== hashForRoute(next)) navigate(next);
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -121,11 +143,6 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ------------------------------------------------------------- clock UI */
-
-  // The clock subscription lives in <TimeBar>, which is the only component that
-  // displays it: a tick repaints the footer instead of the whole shell.
-
   // Fallback clock pump when WebGL is unavailable (exactly one pump ever runs).
   useEffect(() => {
     if (!webglFailed) return;
@@ -139,112 +156,52 @@ export function App() {
     };
   }, [webglFailed]);
 
-  /* --------------------------------------------------------- engine wiring */
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const labelLayer = labelLayerRef.current;
-    if (!canvas || !labelLayer) return;
-
-    let engine: GlobeEngine;
-    try {
-      engine = new GlobeEngine({
-        canvas,
-        labelLayer,
-        callbacks: {
-          onPick: (noradId) => {
-            setState({ selectedNoradId: noradId, rightPanelOpen: noradId !== null || getState().rightPanelOpen });
-          },
-          onHover: (noradId) => setState({ hoveredNoradId: noradId }),
-          onWebGLError: (message) => {
-            console.error('[OrbitWatch] WebGL error:', message);
-            setState({ webglFailed: true });
-          },
-          onWorkerStatus: () => {
-            /* surfaced through the data panel when needed */
-          },
-        },
-      });
-    } catch {
-      // No WebGL (or context creation failed): the UI falls back to list +
-      // inspector mode and keeps the simulation clock running.
-      setState({ webglFailed: true });
-      return;
-    }
-    engineRef.current = engine;
-    void engine.loadTextures(loadEarthTextures);
-
-    const current = getState();
-    engine.setLayers(current.layers);
-    engine.setFollow(current.followSelection);
-    if (current.catalog) engine.setCatalog(current.catalog.records, current.catalog.group);
-
-    return () => {
-      engine.dispose();
-      engineRef.current = null;
-    };
-  }, []);
-
-  // Selection -> engine. The Inspector propagates the selected object for its
-  // own readout, at its own cadence; the engine keeps the globe's copy of the
-  // same state. Neither hands values to the other.
-  useEffect(() => {
-    engineRef.current?.setSelected(selectedNoradId);
-  }, [selectedNoradId, catalog]);
-
-  // Layers / follow -> engine
-  useEffect(() => {
-    engineRef.current?.setLayers(layers);
-  }, [layers]);
-  useEffect(() => {
-    engineRef.current?.setFollow(followSelection);
-  }, [followSelection]);
-
-  /* --------------------------------------------------------------- actions */
+  /* ------------------------------------------------------------- navigation */
 
   const onGroupChange = useCallback(
     (group: string) => {
       if (group === '') return;
-      setState({ selectedNoradId: null, searchQuery: '', rightPanelOpen: false });
+      setState({ selectedNoradId: null, searchQuery: '', rightPanelOpen: false, replayPass: null });
       void loadCatalogGroup(group);
     },
     [loadCatalogGroup],
   );
 
-  const onSelect = useCallback((noradId: number) => {
-    // On narrow screens the panels are drawers: reveal the inspector, not both.
-    setState({ selectedNoradId: noradId, rightPanelOpen: true, leftPanelOpen: false });
-    engineRef.current?.focusSelected();
-  }, []);
-
-  const onLayerToggle = useCallback((layer: keyof LayerVisibility) => {
-    setState((s) => ({ layers: { ...s.layers, [layer]: !s.layers[layer] } }));
-  }, []);
-
-  const onQueryChange = useCallback((query: string) => {
-    setState({ searchQuery: query });
-  }, []);
-
   const onRetry = useCallback(() => {
     void loadCatalogGroup(getState().catalog?.group ?? DEFAULT_GROUP);
   }, [loadCatalogGroup]);
 
-  const inspectorProps = useMemo(
-    () => ({
-      catalog,
-      noradId: selectedNoradId,
-      layers,
-      followSelection,
-      onFocus: () => engineRef.current?.focusSelected(),
-      onFollowToggle: () => setState((s) => ({ followSelection: !s.followSelection })),
-      onLayerToggle,
-      onSelect,
-    }),
-    [catalog, selectedNoradId, layers, followSelection, onLayerToggle, onSelect],
+  const ensureIssSelected = useCallback(async (): Promise<boolean> => {
+    const current = getState().catalog;
+    if (current?.records.some((r) => Number(r.NORAD_CAT_ID) === ISS_NORAD_ID)) {
+      setState({ selectedNoradId: ISS_NORAD_ID });
+      return true;
+    }
+    const next = await loadCatalogGroup('stations');
+    if (next?.records.some((r) => Number(r.NORAD_CAT_ID) === ISS_NORAD_ID)) {
+      setState({ selectedNoradId: ISS_NORAD_ID, searchQuery: '' });
+      return true;
+    }
+    pushToast('The ISS is not in the loaded catalogue right now — showing the explorer instead.');
+    return false;
+  }, [loadCatalogGroup]);
+
+  const onTrackIss = useCallback(() => {
+    onNavigate('explorer');
+    void ensureIssSelected().then((ok) => {
+      if (ok) setState({ rightPanelOpen: true });
+    });
+  }, [onNavigate, ensureIssSelected]);
+
+  const onExploreGroup = useCallback(
+    (group: string, label: string) => {
+      onNavigate('explorer');
+      pushToast(`Loading ${label}…`);
+      onGroupChange(group);
+    },
+    [onNavigate, onGroupChange],
   );
 
-  // On narrow screens the two panels are drawers over the globe: only one may be
-  // open at a time, and the backdrop below closes whichever is open.
   const openDrawer = useCallback((drawer: 'left' | 'right') => {
     setState((s) => {
       const open = drawer === 'left' ? s.leftPanelOpen : s.rightPanelOpen;
@@ -255,94 +212,69 @@ export function App() {
     });
   }, []);
 
-  const closeDrawers = useCallback(() => {
-    setState({ leftPanelOpen: false, rightPanelOpen: false });
-  }, []);
+  const isExplorer = route === 'explorer';
 
   return (
-    <div className="app-shell">
-      <Header
-        onToggleLeft={() => openDrawer('left')}
-        onToggleRight={() => openDrawer('right')}
+    <div className={`app-shell${isExplorer ? ' app-shell-explorer' : ''}`}>
+      <SiteHeader
+        route={route}
+        onNavigate={onNavigate}
+        onToggleLeft={isExplorer ? () => openDrawer('left') : undefined}
+        onToggleRight={isExplorer ? () => openDrawer('right') : undefined}
       />
 
-      {leftOpen || rightOpen ? (
-        <div className="panel-backdrop" onClick={closeDrawers} aria-hidden="true" />
+      {route === 'home' ? (
+        <main className="content">
+          <HomeView
+            onExplore={() => onNavigate('explorer')}
+            onTrackIss={onTrackIss}
+            onNavigate={onNavigate}
+          />
+        </main>
       ) : null}
 
-      <aside className={`panel panel-left${leftOpen ? ' is-open' : ''}`} aria-label="Search and data sources">
-        <div className="panel-drawer-bar">
-          <span className="panel-drawer-title">Search &amp; sources</span>
-          <button type="button" className="btn panel-close" onClick={closeDrawers} aria-label="Close search panel">
-            Close
-          </button>
-        </div>
-        <SearchPanel
+      {isExplorer ? (
+        <Explorer
           catalog={catalog}
+          catalogLoading={catalogLoading}
+          catalogError={catalogError}
           health={health}
-          loading={catalogLoading}
-          error={catalogError}
-          query={searchQuery}
-          selectedNoradId={selectedNoradId}
-          onQueryChange={onQueryChange}
-          onSelect={onSelect}
           onGroupChange={onGroupChange}
           onRetry={onRetry}
+          onOpenSky={() => onNavigate('sky')}
         />
-      </aside>
+      ) : null}
 
-      <main className="stage">
-        <canvas ref={canvasRef} className="globe-canvas" aria-label="Interactive 3D Earth with satellite positions" />
-        <div className="stage-overlay" ref={labelLayerRef} />
+      {route === 'sky' ? (
+        <main className="content">
+          <SkyView
+            catalog={catalog}
+            catalogLoading={catalogLoading}
+            onOpenExplorer={() => onNavigate('explorer')}
+            onTrackIss={onTrackIss}
+          />
+        </main>
+      ) : null}
 
-        {webglFailed ? (
-          <div className="webgl-fallback" role="alert">
-            <h2 style={{ margin: 0, fontSize: 'var(--text-xl)' }}>3D view unavailable</h2>
-            <p style={{ maxWidth: 460 }}>
-              This browser or device could not start WebGL, so the globe cannot render. Every catalogue,
-              search and inspector function still works — select an object from the list to inspect its real
-              orbital elements and SGP4-derived position.
-            </p>
-          </div>
-        ) : null}
+      {route === 'weather' ? (
+        <main className="content">
+          <WeatherView />
+        </main>
+      ) : null}
 
-        <div className="stage-legend-card">
-          <div style={{ fontWeight: 650, color: 'var(--text-primary)' }}>Reading the globe</div>
-          <div>Drag to rotate · scroll or pinch to zoom · click a marker to select · double-click to focus.</div>
-          <div style={{ opacity: 0.85 }}>
-            The terminator is the real day/night boundary for the simulation clock shown below.
-          </div>
-        </div>
+      {route === 'events' ? (
+        <main className="content">
+          <EventsView onExploreGroup={onExploreGroup} />
+        </main>
+      ) : null}
 
-        <div className="layer-toggles" role="group" aria-label="Globe layers">
-          {(
-            [
-              ['orbits', 'Orbit path'],
-              ['groundTracks', 'Ground track'],
-              ['nightLights', 'Night lights'],
-              ['clouds', 'Clouds'],
-              ['atmosphere', 'Atmosphere'],
-            ] as Array<[keyof LayerVisibility, string]>
-          ).map(([key, label]) => (
-            <label key={key} className="layer-toggle">
-              <input type="checkbox" checked={layers[key]} onChange={() => onLayerToggle(key)} />
-              {label}
-            </label>
-          ))}
-        </div>
-      </main>
+      {route === 'about' ? (
+        <main className="content">
+          <AboutView />
+        </main>
+      ) : null}
 
-      <aside className={`panel panel-right${rightOpen ? ' is-open' : ''}`} aria-label="Selected object inspector">
-        <div className="panel-drawer-bar">
-          <span className="panel-drawer-title">Inspector</span>
-          <button type="button" className="btn panel-close" onClick={closeDrawers} aria-label="Close inspector panel">
-            Close
-          </button>
-        </div>
-        <Inspector {...inspectorProps} />
-      </aside>
-
-      <TimeBar catalog={catalog} layers={layers} />
+      {!isExplorer ? <SiteFooter onNavigate={onNavigate} /> : null}
 
       <div className="toast-region" role="status" aria-live="polite">
         {toasts.map((toast) => (

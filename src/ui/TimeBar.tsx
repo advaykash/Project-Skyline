@@ -65,11 +65,24 @@ export function TimeBar(props: TimeBarProps) {
       <div className="time-readout">
         <span className="time-value">{formatUtc(simTimeMs)} UTC</span>
         <span className="time-caption">
-          {rate === 1 ? 'simulation time · real time' : `simulation time · ${rate.toLocaleString('en-US')}× speed`}
+          {rate === 0
+            ? 'simulation time · paused'
+            : rate === 1
+              ? 'simulation time · real time'
+              : `simulation time · ${rate.toLocaleString('en-US')}× speed`}
         </span>
       </div>
 
       <div className="rate-group" role="group" aria-label="Simulation speed">
+        <button
+          type="button"
+          className="rate-btn"
+          aria-pressed={rate === 0}
+          onClick={() => onRateChange(rate === 0 ? 1 : 0)}
+          title={rate === 0 ? 'Resume' : 'Pause'}
+        >
+          {rate === 0 ? '▶' : '❚❚'}
+        </button>
         {RATES.map((value) => (
           <button
             key={value}

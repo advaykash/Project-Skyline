@@ -16,7 +16,7 @@ function loadTexture(url: string, loader: THREE.TextureLoader): Promise<THREE.Te
       (texture) => resolve(texture),
       undefined,
       () => {
-        console.warn(`[OrbitWatch] texture unavailable: ${url}`);
+        console.warn(`[Skyline] texture unavailable: ${url}`);
         resolve(null);
       },
     );

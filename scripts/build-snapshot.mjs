@@ -4,11 +4,11 @@
  *
  * Source modes:
  *   1. Live CelesTrak (preferred; needs egress to celestrak.org):
- *        ORBITWATCH_SNAPSHOT_SOURCE=celestrak node scripts/build-snapshot.mjs
+ *        SKYLINE_SNAPSHOT_SOURCE=celestrak node scripts/build-snapshot.mjs
  *   2. A local directory of verbatim `gp.php?FORMAT=json` payloads laid out as
  *      `<dir>/celestrak/json/<group>.json`, optionally with an upstream
  *      `manifest.json` carrying per-group capture times:
- *        ORBITWATCH_SNAPSHOT_SOURCE=/path/to/mirror node scripts/build-snapshot.mjs
+ *        SKYLINE_SNAPSHOT_SOURCE=/path/to/mirror node scripts/build-snapshot.mjs
  *
  * Output:
  *   data/snapshot/groups/<group>.json   verbatim upstream records (unmodified)
@@ -31,7 +31,7 @@ const GROUPS_FILE = path.join(ROOT, 'shared', 'catalog-groups.json');
 /** CelesTrak GP endpoint (documented parameters: GROUP, FORMAT). */
 const CELESTRAK_GP = 'https://celestrak.org/NORAD/elements/gp.php';
 
-const source = process.env.ORBITWATCH_SNAPSHOT_SOURCE ?? 'celestrak';
+const source = process.env.SKYLINE_SNAPSHOT_SOURCE ?? 'celestrak';
 const allGroups = JSON.parse(await readFile(GROUPS_FILE, 'utf8'));
 const bundledGroups = allGroups.filter((g) => g.bundle).map((g) => g.id);
 
@@ -67,7 +67,7 @@ async function readSource(group) {
   if (source === 'celestrak') {
     const url = `${CELESTRAK_GP}?GROUP=${encodeURIComponent(group)}&FORMAT=json`;
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'OrbitWatch snapshot builder (+https://github.com/akulbajpai-code/SkyLine)' },
+      headers: { 'User-Agent': 'Skyline snapshot builder (+https://github.com/akulbajpai-code/SkyLine)' },
       signal: AbortSignal.timeout(20_000),
     });
     if (!res.ok) throw new Error(`${group}: CelesTrak responded HTTP ${res.status}`);
@@ -121,9 +121,9 @@ async function main() {
   }
 
   const manifest = {
-    schema: 'orbitwatch.snapshot/1',
+    schema: 'skyline.snapshot/1',
     generatedAt: new Date().toISOString(),
-    generatedBy: `scripts/build-snapshot.mjs (ORBITWATCH_SNAPSHOT_SOURCE=${source})`,
+    generatedBy: `scripts/build-snapshot.mjs (SKYLINE_SNAPSHOT_SOURCE=${source})`,
     provider: 'CelesTrak — https://celestrak.org',
     providerEndpoint: CELESTRAK_GP,
     providerDocs: 'https://celestrak.org/NORAD/documentation/gp-data-formats.php',
