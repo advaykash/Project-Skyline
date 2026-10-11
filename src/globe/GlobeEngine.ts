@@ -9,8 +9,11 @@
  *   • One draw call for the entire marker catalogue (THREE.Points).
  *   • Positions arrive from the propagation worker and are written in place.
  *   • The selected object is propagated on the main thread once per frame so its
- *     highlight and label track smoothly without dragging the whole catalogue
- *     up to frame rate.
+ *     highlight, label and own marker vertex track smoothly without dragging the
+ *     whole catalogue up to frame rate.
+ *   • Orbit and ground-track lines are pooled buffers redrawn with
+ *     `setDrawRange`; no geometry or material is ever created or disposed while
+ *     the simulation is running.
  *   • Geometries, materials, textures and the worker are disposed explicitly.
  */
 import * as THREE from 'three';
@@ -22,10 +25,13 @@ import { deriveElements } from '../orbital/derived';
 import { toCatalogObject } from '../orbital/elements';
 import { createEarthMaterials, updateSunUniforms, type EarthTextures } from './earth';
 import { createStarfield } from './stars';
+import { sunDirectionScene } from '../orbital/frames';
 import {
   CATEGORY_COLORS,
   createSatellitePoints,
+  isPlaceholderPosition,
   paintCategory,
+  writePosition,
   writePositions,
 } from './satellitePoints';
 import { advance as advanceClock, claimPump, getTimeMs, releasePump } from '../state/clock';
@@ -65,6 +71,23 @@ export function categoryForGroup(group: string): string {
   return CATEGORY_BY_GROUP[group] ?? 'catalog';
 }
 
+/** Base vertical field of view, in degrees, for landscape viewports. */
+const BASE_FOV_DEG = 42;
+/** Ceiling for the portrait widening below — beyond this the globe shrinks away. */
+const MAX_PORTRAIT_FOV_DEG = 96;
+/** Default camera distance from the Earth's centre, in scene units. */
+const DEFAULT_CAMERA_DISTANCE = 3.75;
+/** Orbit-path buffer capacity: 260 samples per period, plus headroom. */
+const ORBIT_PATH_CAPACITY = 320;
+/** Ground-track buffer capacity per segment: 220 samples per period, plus headroom. */
+const GROUND_TRACK_CAPACITY = 240;
+/** Pooled ground-track lines: one per antimeridian split of a one-period window. */
+const GROUND_TRACK_SEGMENTS = 4;
+
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+/** Used as the cross-product reference when the Sun is near the scene's up axis. */
+const WORLD_UP_ALT = new THREE.Vector3(0, 0, 1);
+
 export class GlobeEngine {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
@@ -87,8 +110,13 @@ export class GlobeEngine {
   private selectionRing!: THREE.Mesh;
   private selectionDot!: THREE.Mesh;
 
-  private orbitLine: THREE.Line | null = null;
+  /** Pooled line buffers: written in place, never reallocated after startup. */
+  private orbitLine!: THREE.Line;
   private groundLines: THREE.Line[] = [];
+
+  /** True once the corresponding texture slot actually loaded. */
+  private nightTextureLoaded = false;
+  private cloudTextureLoaded = false;
 
   private readonly options: GlobeOptions;
   private worker: Worker | null = null;
@@ -105,13 +133,19 @@ export class GlobeEngine {
   private selectedRecord: GpRecord | null = null;
   private selectedSatrec: ReturnType<typeof buildSatrec> | null = null;
   private selectedNoradId: number | null = null;
+  /** Index of the selection inside the marker buffer, for the per-frame update. */
+  private selectedIndex: number | null = null;
   private layers: LayerVisibility | null = null;
   private followSelection = false;
+  /** Set when a focus is requested before the selection has been installed. */
+  private pendingFocus = false;
 
   private pointerNdc = new THREE.Vector2(0, 0);
   private hoverFrame = 0;
   private disposed = false;
+  private contextLost = false;
   private frameHandle = 0;
+  private readonly scratch = new THREE.Vector3();
   private readonly labelEl: HTMLDivElement;
 
   constructor(options: GlobeOptions) {
@@ -129,8 +163,10 @@ export class GlobeEngine {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.12;
 
-    this.camera = new THREE.PerspectiveCamera(42, 1, 0.05, 400);
-    this.camera.position.set(2.45, 1.15, 2.6);
+    this.camera = new THREE.PerspectiveCamera(BASE_FOV_DEG, 1, 0.05, 400);
+    // Open on the terminator: the day/night boundary runs across the disc, so
+    // both the lit and the night side of the real terminator are visible at once.
+    this.camera.position.copy(this.terminatorCameraPosition());
 
     this.controls = new OrbitControls(this.camera, options.canvas);
     this.controls.enableDamping = true;
@@ -177,6 +213,62 @@ export class GlobeEngine {
     this.scene.add(this.satPoints);
 
     this.buildSelectionMarker();
+    this.buildOrbitPools();
+  }
+
+  /**
+   * Pre-allocate the orbit-path and ground-track buffers once.
+   *
+   * They live in the scene for the whole session and are redrawn with
+   * `setDrawRange`, so a rebuild — which happens on every selection change and
+   * periodically while the simulation runs — never allocates a geometry, a
+   * material or a GPU buffer.
+   */
+  private buildOrbitPools(): void {
+    this.orbitLine = this.createPooledLine(ORBIT_PATH_CAPACITY, 0x56a5ff, 0.82, 5);
+    this.scene.add(this.orbitLine);
+    this.groundLines = [];
+    for (let i = 0; i < GROUND_TRACK_SEGMENTS; i += 1) {
+      const line = this.createPooledLine(GROUND_TRACK_CAPACITY, 0xffd479, 0.7, 6);
+      this.scene.add(line);
+      this.groundLines.push(line);
+    }
+  }
+
+  private createPooledLine(
+    capacity: number,
+    color: number,
+    opacity: number,
+    renderOrder: number,
+  ): THREE.Line {
+    const geometry = new THREE.BufferGeometry();
+    const attribute = new THREE.BufferAttribute(new Float32Array(capacity * 3), 3);
+    attribute.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute('position', attribute);
+    geometry.setDrawRange(0, 0);
+    // Never frustum-culled: the pooled buffer always starts at the origin.
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 20);
+    const material = new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+    });
+    const line = new THREE.Line(geometry, material);
+    line.frustumCulled = false;
+    line.renderOrder = renderOrder;
+    line.visible = false;
+    return line;
+  }
+
+  /** Copy `count` vertices into a pooled line and draw exactly that range. */
+  private writePooledLine(line: THREE.Line, positions: Float32Array, count: number): number {
+    const attribute = line.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const written = Math.max(0, Math.min(count, attribute.count));
+    (attribute.array as Float32Array).set(positions.subarray(0, written * 3));
+    attribute.needsUpdate = true;
+    line.geometry.setDrawRange(0, written);
+    return written;
   }
 
   private buildSelectionMarker(): void {
@@ -213,6 +305,7 @@ export class GlobeEngine {
         this.materials.surface.uniforms.dayMap.value = textures.day;
         this.materials.surface.uniforms.hasDay.value = 1;
       }
+      this.nightTextureLoaded = Boolean(textures.night);
       if (textures.night) {
         textures.night.colorSpace = THREE.SRGBColorSpace;
         this.materials.surface.uniforms.nightMap.value = textures.night;
@@ -222,12 +315,11 @@ export class GlobeEngine {
         this.materials.surface.uniforms.specularMap.value = textures.specular;
         this.materials.surface.uniforms.hasSpecular.value = 1;
       }
+      this.cloudTextureLoaded = Boolean(textures.clouds);
       if (textures.clouds) {
         this.materials.clouds.uniforms.cloudMap.value = textures.clouds;
-        this.earthClouds.visible = true;
-      } else {
-        this.earthClouds.visible = false;
       }
+      this.earthClouds.visible = this.cloudTextureLoaded && (this.layers?.clouds ?? true);
       if (this.layers) this.setLayers(this.layers);
     } catch (error) {
       // Textures are enhancement only; the scene works without them.
@@ -241,11 +333,34 @@ export class GlobeEngine {
     canvas.addEventListener('pointerleave', this.onPointerLeave);
     canvas.addEventListener('click', this.onClick);
     canvas.addEventListener('dblclick', this.onDoubleClick);
+    canvas.addEventListener('webglcontextlost', this.onContextLost, false);
+    canvas.addEventListener('webglcontextrestored', this.onContextRestored, false);
     window.addEventListener('resize', this.onResize);
     this.onResize();
     claimPump('globe-engine');
     this.frameHandle = requestAnimationFrame(this.animate);
   }
+
+  /**
+   * A lost context is recoverable, but only if the default action is prevented:
+   * otherwise the browser never fires `webglcontextrestored` and the canvas
+   * stays dead. Rendering pauses; the clock, the worker and the interface carry
+   * on so the application never looks frozen while the GPU recovers.
+   */
+  private onContextLost = (event: Event): void => {
+    event.preventDefault();
+    this.contextLost = true;
+    console.warn('[OrbitWatch] WebGL context lost — rendering paused until the browser restores it.');
+  };
+
+  private onContextRestored = (): void => {
+    this.contextLost = false;
+    console.info('[OrbitWatch] WebGL context restored — resuming rendering.');
+    // The restored context starts with a fresh default framebuffer, so the
+    // drawing-buffer size and projection have to be re-derived.
+    this.onResize();
+    this.requestTick();
+  };
 
   /* --------------------------------------------------------------- catalog */
 
@@ -367,7 +482,9 @@ export class GlobeEngine {
 
   setSelected(noradId: number | null): void {
     this.selectedNoradId = noradId;
-    this.selectedRecord = noradId === null ? null : (this.records.find((r) => Number(r.NORAD_CAT_ID) === noradId) ?? null);
+    const index = noradId === null ? -1 : this.records.findIndex((r) => Number(r.NORAD_CAT_ID) === noradId);
+    this.selectedRecord = index >= 0 ? this.records[index] : null;
+    this.selectedIndex = index >= 0 ? index : null;
     this.selectedSatrec = null;
     if (this.selectedRecord) {
       try {
@@ -377,18 +494,24 @@ export class GlobeEngine {
         this.selectedSatrec = null;
       }
     }
+    // A focus requested in the same interaction that set the selection — a
+    // click on the globe or a result row — is honoured now that the propagation
+    // state for the new object actually exists.
+    if (this.pendingFocus) this.focusSelected();
     this.selectionMarker.visible = Boolean(this.selectedSatrec);
     this.rebuildOrbitGeometry(true);
   }
 
   setLayers(layers: LayerVisibility): void {
     this.layers = layers;
-    this.earthClouds.visible = layers.clouds && Boolean(this.materials.clouds.uniforms.cloudMap.value);
+    this.earthClouds.visible = layers.clouds && this.cloudTextureLoaded;
     this.earthAtmosphere.visible = layers.atmosphere;
-    (this.materials.surface.uniforms.hasNight as { value: number }).value = layers.nightLights
-      ? this.materials.surface.uniforms.hasNight.value
-      : 0;
-    if (this.orbitLine) this.orbitLine.visible = layers.orbits;
+    // Set the uniform from the texture's *loaded* state, never by reading back
+    // the value this method overwrote — reading back made "night lights off"
+    // permanent, because the second toggle saw hasNight === 0 and kept it.
+    (this.materials.surface.uniforms.hasNight as { value: number }).value =
+      layers.nightLights && this.nightTextureLoaded ? 1 : 0;
+    this.orbitLine.visible = layers.orbits;
     for (const line of this.groundLines) line.visible = layers.groundTracks;
     this.labelEl.style.display = layers.labels && this.selectedNoradId !== null ? 'block' : 'none';
   }
@@ -417,20 +540,11 @@ export class GlobeEngine {
     this.lastOrbitRebuildMs = now;
     this.lastOrbitRebuildTime = simTime;
 
-    if (this.orbitLine) {
-      this.scene.remove(this.orbitLine);
-      this.orbitLine.geometry.dispose();
-      (this.orbitLine.material as THREE.Material).dispose();
-      this.orbitLine = null;
+    if (!this.selectedSatrec || !this.selectedRecord) {
+      // Nothing selected: collapse the pooled ranges rather than freeing them.
+      this.hidePooledLines();
+      return;
     }
-    for (const line of this.groundLines) {
-      this.scene.remove(line);
-      line.geometry.dispose();
-      (line.material as THREE.Material).dispose();
-    }
-    this.groundLines = [];
-
-    if (!this.selectedSatrec || !this.selectedRecord) return;
 
     const object = toCatalogObject(this.selectedRecord, 0, simTime);
     const derived = deriveElements(object);
@@ -443,19 +557,11 @@ export class GlobeEngine {
       260,
     );
     if (path && path.count > 1) {
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.BufferAttribute(path.positions, 3));
-      const material = new THREE.LineBasicMaterial({
-        color: 0x56a5ff,
-        transparent: true,
-        opacity: 0.82,
-        depthWrite: false,
-      });
-      this.orbitLine = new THREE.Line(geometry, material);
-      this.orbitLine.frustumCulled = false;
-      this.orbitLine.renderOrder = 5;
+      this.writePooledLine(this.orbitLine, path.positions, path.count);
       this.orbitLine.visible = this.layers?.orbits ?? true;
-      this.scene.add(this.orbitLine);
+    } else {
+      this.orbitLine.geometry.setDrawRange(0, 0);
+      this.orbitLine.visible = false;
     }
 
     const track = computeGroundTrack(
@@ -466,27 +572,42 @@ export class GlobeEngine {
       1,
       220,
     );
-    if (track) {
-      for (const segment of track.segments) {
-        if (segment.count < 2) continue;
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(segment.positions, 3));
-        const material = new THREE.LineBasicMaterial({
-          color: 0xffd479,
-          transparent: true,
-          opacity: 0.7,
-          depthWrite: false,
-        });
-        const line = new THREE.Line(geometry, material);
-        line.frustumCulled = false;
-        line.renderOrder = 6;
-        line.visible = this.layers?.groundTracks ?? true;
-        this.scene.add(line);
-        this.groundLines.push(line);
+    const segments = track ? track.segments.filter((segment) => segment.count >= 2) : [];
+    this.growGroundTrackPool(segments.length);
+    for (let i = 0; i < this.groundLines.length; i += 1) {
+      const line = this.groundLines[i];
+      const segment = segments[i];
+      if (!segment) {
+        line.geometry.setDrawRange(0, 0);
+        line.visible = false;
+        continue;
       }
+      this.writePooledLine(line, segment.positions, segment.count);
+      line.visible = this.layers?.groundTracks ?? true;
     }
 
     void derived;
+  }
+
+  private hidePooledLines(): void {
+    this.orbitLine.geometry.setDrawRange(0, 0);
+    this.orbitLine.visible = false;
+    for (const line of this.groundLines) {
+      line.geometry.setDrawRange(0, 0);
+      line.visible = false;
+    }
+  }
+
+  /**
+   * Add ground-track lines only when an orbit genuinely needs more antimeridian
+   * segments than the pool holds. Steady-state rendering never reaches this.
+   */
+  private growGroundTrackPool(needed: number): void {
+    while (this.groundLines.length < needed) {
+      const line = this.createPooledLine(GROUND_TRACK_CAPACITY, 0xffd479, 0.7, 6);
+      this.scene.add(line);
+      this.groundLines.push(line);
+    }
   }
 
   /* ------------------------------------------------------------- picking */
@@ -509,7 +630,8 @@ export class GlobeEngine {
       const x = array[i * 3];
       const y = array[i * 3 + 1];
       const z = array[i * 3 + 2];
-      if (!Number.isFinite(x)) continue;
+      // Failed propagations sit at the (0,0,0) placeholder and are not targets.
+      if (isPlaceholderPosition(x, y, z)) continue;
       vector.set(x, y, z).project(this.camera);
       if (vector.z > 1) continue; // behind the camera
       const sx = (vector.x * 0.5 + 0.5) * width;
@@ -557,20 +679,58 @@ export class GlobeEngine {
 
   /* -------------------------------------------------------------- camera */
 
+  /**
+   * Fly the camera in towards the selected object.
+   *
+   * The camera moves onto the Earth-centre-to-satellite ray, a little beyond the
+   * object, while the orbit target stays at (0,0,0). Looking at the origin keeps
+   * the globe centred and the object on the view axis, instead of swinging the
+   * whole scene sideways around a target that has drifted off-centre.
+   */
   focusSelected(): void {
-    if (!this.selectedSatrec) return;
+    if (!this.selectedSatrec || this.selectedNoradId === null) {
+      // The interface sets the selection one commit after it asks for the
+      // focus; remember the request instead of focusing the previous object.
+      this.pendingFocus = true;
+      return;
+    }
+    this.pendingFocus = false;
     const state = this.currentState();
-    if (!state) return;
+    if (!state || state.error !== null) return;
+    if (isPlaceholderPosition(state.scene.x, state.scene.y, state.scene.z)) return;
     const target = new THREE.Vector3(state.scene.x, state.scene.y, state.scene.z);
     const direction = target.clone().normalize();
     const distance = Math.max(1.45, target.length() + 0.32);
     const desired = direction.multiplyScalar(distance);
-    this.animateCamera(desired, target, 650);
+    this.controls.target.set(0, 0, 0);
+    this.animateCamera(desired, new THREE.Vector3(0, 0, 0), 650);
   }
 
   resetCamera(): void {
     this.followSelection = false;
-    this.animateCamera(new THREE.Vector3(2.45, 1.15, 2.6), new THREE.Vector3(0, 0, 0), 700);
+    this.controls.target.set(0, 0, 0);
+    this.animateCamera(this.terminatorCameraPosition(), new THREE.Vector3(0, 0, 0), 700);
+  }
+
+  /**
+   * A camera position in the terminator plane: perpendicular to the Sun
+   * direction, so the day/night boundary runs across the middle of the disc and
+   * both sides of it are visible, with a little elevation so the boundary reads
+   * as a line rather than as the rim of the globe.
+   */
+  private terminatorCameraPosition(): THREE.Vector3 {
+    const sun = sunDirectionScene(new Date(getTimeMs()));
+    const sunDir = new THREE.Vector3(sun.x, sun.y, sun.z).normalize();
+    // Pick a reference axis that is never parallel to the Sun, so the cross
+    // product below stays well conditioned at any date.
+    const reference = Math.abs(sunDir.dot(WORLD_UP)) > 0.985 ? WORLD_UP_ALT : WORLD_UP;
+    const across = new THREE.Vector3().crossVectors(sunDir, reference).normalize();
+    const elevation = 0.21; // ≈12°
+    return across
+      .multiplyScalar(Math.cos(elevation))
+      .addScaledVector(WORLD_UP, Math.sin(elevation))
+      .normalize()
+      .multiplyScalar(DEFAULT_CAMERA_DISTANCE);
   }
 
   private cameraTween: {
@@ -607,8 +767,19 @@ export class GlobeEngine {
     const parent = this.options.canvas.parentElement;
     const width = Math.max(parent?.clientWidth ?? window.innerWidth, 1);
     const height = Math.max(parent?.clientHeight ?? window.innerHeight, 1);
+    const aspect = width / height;
     this.renderer.setSize(width, height, false);
-    this.camera.aspect = width / height;
+    this.camera.aspect = aspect;
+    // A portrait viewport would otherwise clip the globe to a strip: hold the
+    // horizontal field of view constant and widen the vertical one instead.
+    this.camera.fov =
+      aspect >= 1
+        ? BASE_FOV_DEG
+        : Math.min(
+            (2 * Math.atan(Math.tan((BASE_FOV_DEG * Math.PI) / 360) / Math.max(aspect, 0.35)) * 180) /
+              Math.PI,
+            MAX_PORTRAIT_FOV_DEG,
+          );
     this.camera.updateProjectionMatrix();
     this.satMaterial.uniforms.viewportHeight.value = height * this.renderer.getPixelRatio();
   };
@@ -636,16 +807,28 @@ export class GlobeEngine {
     if (this.selectedSatrec && this.selectedNoradId !== null) {
       const state = this.currentState();
       if (state && state.error === null) {
-        const position = new THREE.Vector3(state.scene.x, state.scene.y, state.scene.z);
+        const position = this.scratch.set(state.scene.x, state.scene.y, state.scene.z);
         this.selectionMarker.visible = true;
         this.selectionMarker.position.copy(position);
         this.selectionRing.quaternion.copy(this.camera.quaternion);
         this.selectionDot.quaternion.copy(this.camera.quaternion);
 
+        // Keep the selection's own marker vertex in step with the highlight.
+        // The catalogue tick from the worker can be up to ~2 s behind frame
+        // rate; without this the ring leads its own dot.
+        if (this.selectedIndex !== null) {
+          writePosition(this.satGeometry, this.selectedIndex, position.x, position.y, position.z);
+        }
+
         if (this.followSelection && !this.cameraTween) {
-          const delta = position.clone().sub(this.controls.target);
-          this.controls.target.add(delta.multiplyScalar(0.12));
-          this.camera.position.add(delta);
+          // Follow from the camera only: the orbit target stays at the Earth's
+          // centre so the globe never drifts out of frame while following.
+          this.controls.target.set(0, 0, 0);
+          if (!isPlaceholderPosition(position.x, position.y, position.z)) {
+            const distance = this.camera.position.length();
+            const desired = position.clone().normalize().multiplyScalar(distance);
+            this.camera.position.lerp(desired, 0.12);
+          }
         }
 
         if (this.layers?.labels ?? true) {
@@ -676,8 +859,12 @@ export class GlobeEngine {
       this.labelEl.style.display = 'none';
     }
 
-    this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    // While the context is lost there is nothing to draw into; keep computing
+    // clock and positions so the interface resumes exactly where it should.
+    if (!this.contextLost) {
+      this.controls.update();
+      this.renderer.render(this.scene, this.camera);
+    }
 
     // Periodic catalogue propagation request (worker cadence).
     this.requestTick();
@@ -697,6 +884,8 @@ export class GlobeEngine {
     canvas.removeEventListener('pointerleave', this.onPointerLeave);
     canvas.removeEventListener('click', this.onClick);
     canvas.removeEventListener('dblclick', this.onDoubleClick);
+    canvas.removeEventListener('webglcontextlost', this.onContextLost);
+    canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
     window.removeEventListener('resize', this.onResize);
 
     this.labelEl.remove();

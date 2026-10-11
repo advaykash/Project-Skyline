@@ -4,8 +4,9 @@
  *
  * Textures are bundled locally (NASA Blue Marble / Black Marble derivatives
  * distributed with the three.js examples; see docs/CREDITS.md). Every texture
- * slot degrades gracefully: if a file fails to load the shader falls back to a
- * plausible solid surface instead of rendering black or breaking.
+ * slot degrades gracefully: if a file fails to load the material binds a 1×1
+ * DataTexture fallback and the shader falls back to a plausible solid surface
+ * instead of sampling an unbound unit, rendering black or breaking.
  */
 import * as THREE from 'three';
 import { sunDirectionScene } from '../orbital/frames';
@@ -62,13 +63,15 @@ const EARTH_SURFACE_FRAG = /* glsl */ `
     lit += lights * nightAmount * vec3(1.0, 0.86, 0.62);
 
     // Ocean specular: the specular map is white over water, dark over land.
+    // Every pow() base is clamped away from zero: pow(0, n) and denormal bases
+    // produce flicker (and, for a negative base, NaN) on some mobile GPUs.
     float specMask = texture2D(specularMap, vUv).r * hasSpecular;
     vec3 halfV = normalize(sunDir + viewDir);
-    float spec = pow(max(dot(n, halfV), 0.0), 48.0) * specMask;
+    float spec = pow(clamp(dot(n, halfV), 0.0001, 1.0), 48.0) * specMask;
     lit += vec3(0.55, 0.62, 0.72) * spec * clamp(sunDot * 4.0, 0.0, 1.0);
 
     // Atmospheric haze along the limb, warmed near the terminator.
-    float fresnel = pow(1.0 - max(dot(n, viewDir), 0.0), 2.6);
+    float fresnel = pow(clamp(1.0 - max(dot(n, viewDir), 0.0), 0.0001, 1.0), 2.6);
     float litAmount = smoothstep(-0.25, 0.35, sunDot);
     lit += fresnel * litAmount * vec3(0.16, 0.24, 0.38);
     float twilight = smoothstep(-0.32, 0.02, sunDot) * (1.0 - smoothstep(0.02, 0.42, sunDot));
@@ -122,7 +125,7 @@ const ATMO_FRAG = /* glsl */ `
   void main() {
     vec3 n = normalize(vNormalW);
     vec3 viewDir = normalize(cameraPosition - vPosW);
-    float rim = pow(1.0 - abs(dot(n, viewDir)), 3.2);
+    float rim = pow(clamp(1.0 - abs(dot(n, viewDir)), 0.0001, 1.0), 3.2);
     float sunDot = dot(n, normalize(sunDirection));
     float lit = smoothstep(-0.35, 0.55, sunDot);
     float twilight = smoothstep(-0.30, 0.05, sunDot) * (1.0 - smoothstep(0.05, 0.5, sunDot));
@@ -131,18 +134,38 @@ const ATMO_FRAG = /* glsl */ `
   }
 `;
 
+/**
+ * 1×1 fallback for a texture slot whose real asset did not load.
+ *
+ * Binding a real — if tiny — texture keeps every `sampler2D` satisfied, instead
+ * of leaving a null uniform that some drivers sample undefined. The `has*`
+ * uniforms still decide whether the sample contributes anything, and the cloud
+ * slot is transparent, so an unloaded layer draws nothing.
+ */
+function createPixelTexture(r: number, g: number, b: number, a: number): THREE.DataTexture {
+  const texture = new THREE.DataTexture(new Uint8Array([r, g, b, a]), 1, 1, THREE.RGBAFormat);
+  texture.needsUpdate = true;
+  return texture;
+}
+
 export function createEarthMaterials(textures: EarthTextures): {
   surface: THREE.ShaderMaterial;
   clouds: THREE.ShaderMaterial;
   atmosphere: THREE.ShaderMaterial;
 } {
+  // Slots that failed to load get a 1×1 fallback rather than a null sampler.
+  const dayFallback = createPixelTexture(20, 28, 40, 255);
+  const nightFallback = createPixelTexture(0, 0, 0, 255);
+  const specularFallback = createPixelTexture(0, 0, 0, 255);
+  const cloudFallback = createPixelTexture(0, 0, 0, 0);
+
   const surface = new THREE.ShaderMaterial({
     vertexShader: EARTH_SURFACE_VERT,
     fragmentShader: EARTH_SURFACE_FRAG,
     uniforms: {
-      dayMap: { value: textures.day },
-      nightMap: { value: textures.night },
-      specularMap: { value: textures.specular },
+      dayMap: { value: textures.day ?? dayFallback },
+      nightMap: { value: textures.night ?? nightFallback },
+      specularMap: { value: textures.specular ?? specularFallback },
       sunDirection: { value: new THREE.Vector3(1, 0, 0) },
       hasDay: { value: textures.day ? 1 : 0 },
       hasNight: { value: textures.night ? 1 : 0 },
@@ -154,7 +177,7 @@ export function createEarthMaterials(textures: EarthTextures): {
     vertexShader: CLOUD_VERT,
     fragmentShader: CLOUD_FRAG,
     uniforms: {
-      cloudMap: { value: textures.clouds },
+      cloudMap: { value: textures.clouds ?? cloudFallback },
       sunDirection: { value: new THREE.Vector3(1, 0, 0) },
     },
     transparent: true,

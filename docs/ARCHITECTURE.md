@@ -17,6 +17,9 @@ Cache API entry  ──/__orbitwatch-cache/gp/<group>──  body + retrieval-ti
         ▼
 GET /api/gp response: { group, state, provenance, recordCount, records[] }
         │
+        │  state === 'snapshot' only → one browser-direct attempt at CelesTrak
+        │  (src/data/api.ts, 5 s budget, same validation); success replaces the
+        │  snapshot and is labelled live, failure keeps the snapshot untouched
         ▼
 src/workers/propagator.worker.ts   SGP4 propagators built once per catalogue (satellite.js)
         │   tick(timeMs) → Float32Array of scene-space positions (transferred)
@@ -24,7 +27,9 @@ src/workers/propagator.worker.ts   SGP4 propagators built once per catalogue (sa
 src/globe/GlobeEngine.ts   one THREE.Points draw call for the whole catalogue
         │
         └── selection: buildSatrec + propagateState on the main thread (1 object/frame)
-            → marker highlight, DOM label, orbit path, ground track, inspector values
+            → marker highlight and its buffer vertex, DOM label, orbit path, ground track
+src/ui/Inspector.tsx       the same propagateState path, one SGP4 call per 200 ms tick,
+                           stamped with the instant it was computed for
 ```
 
 ## Frames, units and datums (the audit trail)
@@ -75,14 +80,27 @@ Failure ladder on every `/api/gp` request:
 
 - Earth: custom ShaderMaterial — day/night mixing with a real solar terminator (sun direction
   from `satellite.js`'s low-precision solar ephemeris), night lights, ocean specular, limb haze,
-  twilight warmth; separate cloud and additive atmosphere shells.
+  twilight warmth; separate cloud and additive atmosphere shells. Every texture slot that fails
+  to load binds a 1×1 `DataTexture` fallback and clears its `has*` uniform, so the layer is
+  skipped instead of the sampler being unbound. All `pow()` bases are clamped to
+  `[0.0001, 1.0]` — denormal or negative bases flicker (or produce NaN) on mobile GPUs.
 - Catalogue: one `THREE.Points` buffer; positions written in place from the worker; marker size
-  and glow scale with catalogue density (pinned by unit test).
+  and glow scale with catalogue density (pinned by unit test). A failed propagation keeps the
+  `(0, 0, 0)` placeholder, which the vertex shader discards
+  (`dot(position, position) < 0.25`) — no NaN ever reaches the GPU, and the picking pass skips
+  the same slots.
 - Orbit path and ground track are computed from the same `propagateState` path as markers (a
   test asserts the first path vertex equals the marker position at the same instant); the
-  ground track is split at the antimeridian.
+  ground track is split at the antimeridian. Both are pre-allocated pooled buffers redrawn with
+  `setDrawRange`, so a periodic rebuild never allocates or disposes a geometry or material.
+  The selected object's own marker vertex is refreshed every frame, so the highlight never
+  leads the marker during a slow catalogue tick.
+- Camera: opens on the terminator plane (perpendicular to the Sun), the vertical field of view
+  widens on portrait viewports to hold the globe, and `controls.target` stays at the Earth's
+  centre for both focus and follow.
 - Disposal: engine `dispose()` terminates the worker, cancels frames/listeners and disposes
-  every geometry/material/texture.
+  every geometry/material/texture. `webglcontextlost` is `preventDefault()`ed so the browser
+  will fire `webglcontextrestored`; rendering pauses meanwhile while the clock keeps running.
 
 ## Backend deployment model
 

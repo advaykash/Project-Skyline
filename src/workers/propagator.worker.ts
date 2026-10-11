@@ -11,6 +11,10 @@
  *   worker -> main : { type: 'ready', id, count, failures }
  *                    { type: 'positions', id, timeMs, positions, durationMs }
  *                    { type: 'error', message }
+ *
+ * A record that cannot be propagated keeps the `(0, 0, 0)` placeholder in the
+ * buffer — an impossible scene position that the marker vertex shader clips.
+ * No NaN is ever sent, and no substitute position is ever invented.
  */
 /// <reference lib="webworker" />
 import type { SatRec } from 'satellite.js';
@@ -66,26 +70,18 @@ function tick(timeMs: number): { positions: Float32Array; durationMs: number } {
   const started = performance.now();
   const date = new Date(timeMs);
   const gmst = gmstFor(date);
+  // Zero-filled: every slot starts as the (0,0,0) placeholder and is only
+  // overwritten when SGP4 actually produced a finite scene position.
   const positions = new Float32Array(objectCount * 3);
 
   for (let i = 0; i < objectCount; i += 1) {
     const satrec = satrecs[i];
-    if (!satrec) {
-      positions[i * 3] = Number.NaN;
-      positions[i * 3 + 1] = Number.NaN;
-      positions[i * 3 + 2] = Number.NaN;
-      continue;
-    }
+    if (!satrec) continue; // no propagator: leave the placeholder
     const scene = propagateScenePosition(satrec, date, gmst);
-    if (scene) {
-      positions[i * 3] = scene.x;
-      positions[i * 3 + 1] = scene.y;
-      positions[i * 3 + 2] = scene.z;
-    } else {
-      positions[i * 3] = Number.NaN;
-      positions[i * 3 + 1] = Number.NaN;
-      positions[i * 3 + 2] = Number.NaN;
-    }
+    if (!scene) continue; // SGP4 failure: leave the placeholder
+    positions[i * 3] = scene.x;
+    positions[i * 3 + 1] = scene.y;
+    positions[i * 3 + 2] = scene.z;
   }
   return { positions, durationMs: performance.now() - started };
 }
