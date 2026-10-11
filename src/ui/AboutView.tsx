@@ -19,6 +19,25 @@ export const AboutView = memo(function AboutView() {
 
       <section className="card" aria-label="The pipeline">
         <h2>The pipeline in three stages</h2>
+        <div className="pipeline-flow" aria-hidden="true">
+          <div className="flow-node">
+            <span className="flow-num">1</span>
+            <strong>CelesTrak elements</strong>
+            <span>published GP records</span>
+          </div>
+          <span className="flow-arrow">→</span>
+          <div className="flow-node">
+            <span className="flow-num">2</span>
+            <strong>SGP4 propagation</strong>
+            <span>position at time t</span>
+          </div>
+          <span className="flow-arrow">→</span>
+          <div className="flow-node">
+            <span className="flow-num">3</span>
+            <strong>Frames + globe</strong>
+            <span>TEME → ECEF → dot</span>
+          </div>
+        </div>
         <ol className="pipeline">
           <li>
             <strong>1 · Retrieve.</strong> Public General Perturbations (GP) element sets are

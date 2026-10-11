@@ -81,7 +81,7 @@ unreachable), no Cloudflare credentials, no physical devices.
 | 40 | Security review | Directive §17G | No secrets, no open proxy, validated input | No credentials in repo; allowlisted proxy; lat/lon/group validation; no `dangerouslySetInnerHTML`; error messages non-leaking | Complete | `proxy.ts` allowlist test; `grep` for secrets/`innerHTML`/`eval` clean | Tests + grep + runtime 400/502 checks | Dependency audit not run (see 41) | Medium | `npm audit` + fix on connected machine |
 | 41 | Cloudflare deployment + public verification | Directive §16 | Deployed + verified live data | Runtime-verified locally (`wrangler pages dev`); deploy config ready; **not published** | Blocked | `wrangler.toml`, `docs/DEPLOY.md`, local runtime curl checks | Local only | Needs owner credentials / Git integration | High | `wrangler pages deploy dist` + DEPLOY checklist |
 | 42 | Browser compatibility + long sessions | Regression 11–12 | Chrome/Edge/Safari/Firefox + soak | Not runnable here (no browser) | Blocked | e2e scripts ready | None here | Full matrix pending | Medium | Chrome e2e → Safari/Firefox manual |
-| 43 | Tests, docs, credits, AI log | Directive §22, Tier 1 | Real results + maintainable docs | 98 tests green, lint/typecheck clean, README/START_HERE/CREDITS/AI_USE_LOG/audit/DEPLOY/DEMO/TESTING/ARCHITECTURE current | Complete | This repo | `npm test/typecheck/lint/build` all pass | None | — | None |
+| 43 | Tests, docs, credits, AI log | Directive §22, Tier 1 | Real results + maintainable docs | 106 tests green, lint/typecheck clean, README/START_HERE/CREDITS/AI_USE_LOG/audit/DEPLOY/DEMO/TESTING/ARCHITECTURE current | Complete | This repo | `npm test/typecheck/lint/build` all pass | None | — | None |
 
 ## Tier 3 (optional) disposition
 
@@ -118,7 +118,7 @@ Chrome run; (2) no public deployment yet — needs owner credentials; (3) live u
 4. Public deployment behaviour — no credentials.
 5. Frame rates, memory growth, real-device behaviour — no devices.
 
-What *was* verified here instead: 98 unit/integration tests (incl. independent-implementation
+What *was* verified here instead: 106 unit/integration tests (incl. independent-implementation
 cross-checks), strict typecheck, lint, production build, SSR render of every view, full
 replay-path smoke test on real snapshot data (12 passes predicted, scores computed), real Pages
 runtime serving (`wrangler pages dev`) with curl-verified snapshot/validation/failure behaviour

@@ -26,7 +26,7 @@ AI coding agent (Arena.ai Agent Mode) working autonomously under a master engine
 - **New experience**: hash-routed app shell (Home, Explorer, Sky & Passes, Space Weather, Debris
   Events, How It Works), Orbit-to-Observer Replay with canvas sky chart, observer presets/custom/
   geolocation, Kp chart, historical event education, hero and design system.
-- **Quality**: 23 new tests (98 total), propagated-types strictness, lint-clean, SSR render smoke
+- **Quality**: 31 new tests (106 total), propagated-types strictness, lint-clean, SSR render smoke
   tests, full replay-path smoke test on real snapshot data, e2e scripts updated for the new UI,
   production build verified in the real Pages runtime (`wrangler pages dev`), endpoint behaviour
   verified with curl (snapshot + validation + honest-failure paths).

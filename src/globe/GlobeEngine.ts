@@ -125,6 +125,10 @@ export class GlobeEngine {
   private tickTimer: number | null = null;
   private tickId = 0;
   private pendingTickId = 0;
+  /** Id of the most recent catalogue load; older worker answers are ignored. */
+  private pendingCatalogId = 0;
+  /** Highest tick id applied to the markers; older answers are ignored. */
+  private appliedTickId = 0;
   private lastTickRequestedAt = 0;
   private lastOrbitRebuildMs = 0;
   private lastOrbitRebuildTime = 0;
@@ -394,18 +398,22 @@ export class GlobeEngine {
     });
     this.worker.addEventListener('message', this.onWorkerMessage);
     this.worker.addEventListener('error', this.onWorkerError);
-    this.worker.postMessage({ type: 'catalog', id: ++this.tickId, records });
+    this.pendingCatalogId = ++this.tickId;
+    this.worker.postMessage({ type: 'catalog', id: this.pendingCatalogId, records });
 
     this.rebuildOrbitGeometry(true);
   }
 
   private onWorkerMessage = (event: MessageEvent): void => {
     const message = event.data as
-      | { type: 'ready'; count: number; failures: unknown[] }
-      | { type: 'positions'; timeMs: number; positions: Float32Array; durationMs: number }
+      | { type: 'ready'; id: number; count: number; failures: unknown[] }
+      | { type: 'positions'; id: number; timeMs: number; positions: Float32Array; durationMs: number }
       | { type: 'error'; message: string };
 
     if (message.type === 'ready') {
+      // A catalogue switch terminates the old worker, but its already-posted
+      // answer may still be in flight: only the awaited load unlocks ticks.
+      if (message.id !== this.pendingCatalogId) return;
       this.workerReady = true;
       this.workerFailures = message.failures.length;
       this.options.callbacks.onWorkerStatus({
@@ -417,7 +425,12 @@ export class GlobeEngine {
       return;
     }
     if (message.type === 'positions') {
+      // Ticks can queue behind a slow catalogue pass; answers arrive in order,
+      // and only ever move the markers forward — an older answer can never
+      // overwrite newer state.
+      if (message.id <= this.appliedTickId) return;
       if (message.positions.length !== this.satCount * 3) return;
+      this.appliedTickId = message.id;
       writePositions(this.satGeometry, message.positions);
       this.options.callbacks.onWorkerStatus({
         ready: true,

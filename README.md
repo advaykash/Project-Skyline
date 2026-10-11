@@ -118,7 +118,7 @@ The API derives one of four states from metadata (see `shared/freshness.json`):
 ## Testing
 
 ```bash
-npm test               # 98 unit/integration tests (vitest)
+npm test               # 106 unit/integration tests (vitest)
 npm run typecheck      # tsc --noEmit
 npm run lint           # eslint
 npm run build          # production build

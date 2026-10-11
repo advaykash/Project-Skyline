@@ -4,7 +4,7 @@
 
 | Command | What it proves |
 |---|---|
-| `npm test` | 98 tests: GP-record validation, frame conventions, propagation sanity, derived formulas, orbit/ground-track consistency, observer geometry (look angles, eclipse, passes, viewing heuristic), NOAA/Open-Meteo parsing + proxy behaviour, backend success+failure paths, rate limiting, snapshot integrity |
+| `npm test` | 106 tests: GP-record validation, frame conventions, propagation sanity, derived formulas, orbit/ground-track consistency, observer geometry (look angles, eclipse, passes, viewing heuristic), NOAA/Open-Meteo parsing + proxy behaviour, backend success+failure paths, rate limiting, snapshot integrity, clock ownership/transitions |
 | `npm run typecheck` | strict TypeScript across frontend, workers, Functions and tests |
 | `npm run lint` | eslint (incl. React purity rules) |
 | `npm run build` | production build (typecheck + vite) |
@@ -105,3 +105,9 @@ node scripts/make-test-fixtures.mjs     # extract GP fixtures from data/snapshot
 python3 tools/skyfield-reference.py     # regenerate reference states (pip install skyfield sgp4)
 SKYLINE_SNAPSHOT_SOURCE=/path/to/mirror node scripts/build-snapshot.mjs   # rebuild the offline snapshot
 ```
+
+## Simulation clock
+
+`tests/clock.test.ts` covers the single-pump handshake (exactly one owner; non-owner advances
+ignored), rate scaling, pause-at-zero, the 250 ms tab-gap clamp, throttled subscriber
+notification, seek semantics and return-to-live.

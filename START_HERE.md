@@ -60,7 +60,7 @@ with evidence, and what remains.
 ## 4. Test it (2 minutes)
 
 ```bash
-npm test          # 98 unit/integration tests
+npm test          # 106 unit/integration tests
 npm run typecheck # strict TypeScript
 npm run lint      # eslint
 npm run build     # production build into dist/
