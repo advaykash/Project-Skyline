@@ -1,0 +1,7 @@
+{
+  "liveMs": 7200000,
+  "cachedMs": 86400000,
+  "refreshIntervalMs": 7200000,
+  "upstreamTimeoutMs": 6000,
+  "note": "CelesTrak asks consumers not to fetch GP data more often than every 2 hours per group. LIVE = successful upstream retrieval within 2 h. CACHED = genuine data up to 24 h old. STALE = genuine data older than 24 h, still served but clearly labelled. SNAPSHOT = the bundled offline dataset, never presented as live."
+}

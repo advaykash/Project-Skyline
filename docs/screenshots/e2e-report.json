@@ -1,0 +1,140 @@
+{
+  "baseURL": "http://127.0.0.1:8788",
+  "testedAt": "2026-10-11T00:59:59.369Z",
+  "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+  "results": [
+    {
+      "name": "page loads",
+      "ok": true,
+      "detail": "OrbitWatch — Satellite Tracking & Orbital Visualization"
+    },
+    {
+      "name": "WebGL context active",
+      "ok": true,
+      "detail": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver) @ 770×792"
+    },
+    {
+      "name": "canvas is sized",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "GET /api/health responds",
+      "ok": true,
+      "detail": "runtime=cloudflare-pages-functions"
+    },
+    {
+      "name": "health carries per-group provenance",
+      "ok": true,
+      "detail": "13 groups"
+    },
+    {
+      "name": "GET /api/gp returns genuine records + state",
+      "ok": true,
+      "detail": "22 records, state=snapshot, retrievedAt=2026-10-10T21:52:53.556Z"
+    },
+    {
+      "name": "provenance is explicit about freshness",
+      "ok": true,
+      "detail": "Offline snapshot captured 2026-10-10T21:52:53.556Z (3.1 h old). CelesTrak could not be rea"
+    },
+    {
+      "name": "search results render",
+      "ok": true,
+      "detail": "22 rows"
+    },
+    {
+      "name": "search filters the real catalogue",
+      "ok": true,
+      "detail": "ISS (ZARYA)"
+    },
+    {
+      "name": "inspector shows the selected object",
+      "ok": true,
+      "detail": "ISS (ZARYA)"
+    },
+    {
+      "name": "geodetic position is populated",
+      "ok": true,
+      "detail": "lat=26.351° S lon=29.337° E"
+    },
+    {
+      "name": "altitude is plausible for the ISS",
+      "ok": true,
+      "detail": "alt=426.8km above WGS-84"
+    },
+    {
+      "name": "velocity is populated",
+      "ok": true,
+      "detail": "speed=7.656km/s inertial"
+    },
+    {
+      "name": "source elements shown separately from calculated values",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "provenance section present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "selected-satellite label renders over the globe",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "layer toggles present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "inspector actions render",
+      "ok": true,
+      "detail": "4 buttons"
+    },
+    {
+      "name": "camera drag interaction completes without errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "time controls render",
+      "ok": true,
+      "detail": "8 controls"
+    },
+    {
+      "name": "speed change is reflected in the readout",
+      "ok": true,
+      "detail": "simulation time · 300× speed"
+    },
+    {
+      "name": "group switch loads a different catalogue",
+      "ok": true,
+      "detail": "157 rows visible"
+    },
+    {
+      "name": "mobile: no horizontal overflow",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no uncaught page errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no failed texture requests",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "console errors (informational)",
+      "ok": true,
+      "detail": "clean"
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": []
+}

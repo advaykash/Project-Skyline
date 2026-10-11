@@ -1,0 +1,19 @@
+# Cloudflare Pages configuration for OrbitWatch.
+#
+# Deployment is either:
+#   • Cloudflare Pages Git integration (build command `npm run build`,
+#     output directory `dist`) — the Functions in `functions/` are picked up
+#     automatically; or
+#   • `npx wrangler pages deploy dist` from a machine with Cloudflare credentials.
+#
+# See docs/DEPLOY.md for the full guide. No paid resources are required:
+# the API uses the Pages runtime plus the Cache API; no KV, no Durable Objects.
+name = "orbitwatch"
+compatibility_date = "2026-10-06"
+pages_build_output_dir = "dist"
+
+# Environment variables consumed by functions/api/_lib/context.ts.
+# CELESTRAK_BASE may be pointed at a test double in CI; it is configuration,
+# never request input, and is never accepted from a client.
+[vars]
+UPSTREAM_TIMEOUT_MS = "6000"
