@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.npm/
+
+# Build output (regenerate with `npm run build`)
+dist/
+
+# Wrangler / Cloudflare local state (generated)
+.wrangler/
+
+# Logs & caches
+*.log
+npm-debug.log*
+.cache/
+.eslintcache
+.turbo/
+
+# Editor & OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Test scratch output (committed screenshots live in docs/screenshots/ deliberately)
+tmp/
+.tmp-*
+
+# Environment / credentials — never commit
+.env
+.env.*
+*.pem

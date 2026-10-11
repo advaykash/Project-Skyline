@@ -1,0 +1,104 @@
+/* ==========================================================================
+   OrbitWatch design tokens
+   --------------------------------------------------------------------------
+   A restrained aerospace-instrument system: deep space neutrals, one accent,
+   and semantic colour reserved for data states. Typography, spacing and
+   surface hierarchy carry the identity — not glow effects.
+   ========================================================================== */
+
+:root {
+  /* Surfaces */
+  --bg-space: #06090f;
+  --bg-panel: #0c1320;
+  --bg-panel-2: #111a2a;
+  --bg-inset: #0a1220;
+  --bg-hover: rgba(122, 160, 210, 0.10);
+  --bg-active: rgba(122, 160, 210, 0.16);
+
+  /* Lines */
+  --line: rgba(146, 176, 214, 0.16);
+  --line-strong: rgba(146, 176, 214, 0.30);
+
+  /* Text */
+  --text-primary: #e8eef6;
+  --text-secondary: #a7b6c9;
+  --text-tertiary: #7f92a8;
+  --text-inverse: #06121f;
+
+  /* Accent (used sparingly: selection, focus, primary actions) */
+  --accent: #56a5ff;
+  --accent-strong: #7cbcff;
+  --accent-soft: rgba(86, 165, 255, 0.16);
+  --accent-line: rgba(86, 165, 255, 0.42);
+
+  /* Data-state semantics */
+  --state-live: #3ddc97;
+  --state-live-soft: rgba(61, 220, 151, 0.14);
+  --state-cached: #f5b642;
+  --state-cached-soft: rgba(245, 182, 66, 0.14);
+  --state-stale: #f28749;
+  --state-stale-soft: rgba(242, 135, 73, 0.16);
+  --state-snapshot: #b39af0;
+  --state-snapshot-soft: rgba(179, 154, 240, 0.16);
+  --state-danger: #ff6b6b;
+  --state-danger-soft: rgba(255, 107, 107, 0.14);
+
+  /* Category tints for satellite markers */
+  --cat-crewed: #7cc7ff;
+  --cat-constellation: #8fe3b0;
+  --cat-debris: #f0a878;
+  --cat-navigation: #c7b1ff;
+  --cat-science: #7fe0e6;
+  --cat-visual: #ffe08a;
+  --cat-earth-observation: #7fc4ff;
+  --cat-catalog: #9fb6d0;
+
+  /* Typography */
+  --font-sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo,
+    Consolas, monospace;
+  --text-xs: 0.6875rem;   /* 11px */
+  --text-sm: 0.75rem;     /* 12px */
+  --text-md: 0.8125rem;   /* 13px */
+  --text-base: 0.875rem;  /* 14px */
+  --text-lg: 1rem;        /* 16px */
+  --text-xl: 1.25rem;     /* 20px */
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --tracking-label: 0.08em;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Radii & borders */
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --shadow-panel: 0 12px 32px rgba(2, 6, 14, 0.45);
+  --shadow-pop: 0 18px 50px rgba(2, 6, 14, 0.6);
+
+  /* Layout */
+  --header-h: 56px;
+  --panel-w-left: 322px;
+  --panel-w-right: 348px;
+  --timebar-h: 52px;
+
+  /* Motion */
+  --motion-fast: 120ms;
+  --motion-med: 220ms;
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-med: 0ms;
+  }
+}

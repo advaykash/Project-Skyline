@@ -1,0 +1,120 @@
+{
+  "schema": "orbitwatch.snapshot/1",
+  "generatedAt": "2026-10-10T23:42:09.212Z",
+  "generatedBy": "scripts/build-snapshot.mjs (ORBITWATCH_SNAPSHOT_SOURCE=/tmp/satvis)",
+  "provider": "CelesTrak — https://celestrak.org",
+  "providerEndpoint": "https://celestrak.org/NORAD/elements/gp.php",
+  "providerDocs": "https://celestrak.org/NORAD/documentation/gp-data-formats.php",
+  "usagePolicy": "https://celestrak.org/usage-policy.php",
+  "note": "Verbatim CelesTrak GP JSON captured for offline and demonstration operation. Records are unmodified upstream payloads; epochs are the propagation reference times. Snapshot data is always labelled as a snapshot in the application and is never presented as live data.",
+  "groups": {
+    "stations": {
+      "recordCount": 22,
+      "bytes": 9293,
+      "sha256": "648b069c3cc87606f670886699e5b8159d1518d3e505579783016d2831c07fb6",
+      "capturedAt": "2026-10-10T21:52:53.556Z",
+      "sourceUrl": "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=json",
+      "via": "local mirror directory /tmp/satvis",
+      "epochRange": {
+        "min": "2026-10-08T16:51:36.108864",
+        "max": "2026-10-10T15:34:41.721600"
+      }
+    },
+    "visual": {
+      "recordCount": 157,
+      "bytes": 65106,
+      "sha256": "83f31f12fc7d37398077534d619206506599df4bb53afcd63931b2770dc50640",
+      "capturedAt": "2026-08-31T10:24:21.427Z",
+      "sourceUrl": "https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=json",
+      "via": "local mirror directory /tmp/satvis",
+      "epochRange": {
+        "min": "2026-08-29T06:03:08.302752",
+        "max": "2026-08-31T05:44:03.737760"
+      }
+    },
+    "active": {
+      "recordCount": 16468,
+      "bytes": 6894666,
+      "sha256": "80847aed1b44c8080b950046a3347ee03c311ae3b13e4a5f6c3e47c9b8d35098",
+      "capturedAt": "2026-08-31T10:24:11.277Z",
+      "sourceUrl": "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=json",
+      "via": "local mirror directory /tmp/satvis",
+      "epochRange": {
+        "min": "2026-08-02T06:44:17.374560",
+        "max": "2026-09-07T15:41:18.581856"
+      }
+    },
+    "starlink": {
+      "recordCount": 11037,
+      "bytes": 4639670,
+      "sha256": "b41fb2032d0ad72744e4234804fa66928f5e26445e8950764cce8789f35d8224",
+      "capturedAt": "2026-08-31T10:23:20.719Z",
+      "sourceUrl": "https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=json",
+      "via": "local mirror directory /tmp/satvis",
+      "epochRange": {
+        "min": "2026-08-25T03:22:20.307648",
+        "max": "2026-08-31T07:48:45.926784"
+      }
+    },
+    "weather": {
+      "recordCount": 73,
+      "bytes": 30280,
+      "sha256": "4e4c20e91614455a4e58b3e6788d2edb94b3bc591674910ff1015bd74ee9bf04",
+      "capturedAt": "2026-10-10T21:53:18.941Z",
+      "sourceUrl": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=json",
+      "via": "local mirror directory /tmp/satvis",
+      "epochRange": {
+        "min": "2026-09-29T06:18:58.791744",
+        "max": "2026-10-10T15:22:21.014400"
+      }
+    },
+    "science": {
+      "recordCount": 46,
+      "bytes": 19065,
+      "sha256": "1eb94bcd085c9108f7fae0b4d5f1aaec3666c00a1eca62f9665813ecd9399e7a",
+      "capturedAt": "2026-10-10T16:47:09.666Z",
+      "sourceUrl": "https://celestrak.org/NORAD/elements/gp.php?GROUP=science&FORMAT=json",
+      "via": "local mirror directory /tmp/satvis",
+      "epochRange": {
+        "min": "2026-10-04T02:51:36.046944",
+        "max": "2026-10-12T17:36:20.007360"
+      }
+    },
+    "fengyun-1c-debris": {
+      "recordCount": 1979,
+      "bytes": 838407,
+      "sha256": "126a03844b35f24178ed23d0c40e92601887f27946d3169ac6e42b0324baa19d",
+      "capturedAt": "2026-10-10T21:54:03.404Z",
+      "sourceUrl": "https://celestrak.org/NORAD/elements/gp.php?GROUP=fengyun-1c-debris&FORMAT=json",
+      "via": "local mirror directory /tmp/satvis",
+      "epochRange": {
+        "min": "2026-09-11T02:37:23.328192",
+        "max": "2026-10-10T15:53:26.786976"
+      }
+    },
+    "cosmos-2251-debris": {
+      "recordCount": 588,
+      "bytes": 249987,
+      "sha256": "ecb40fa59003a593fddde4c467ebff0b9efcac336e300a6297aff635b827f14c",
+      "capturedAt": "2026-10-10T16:48:26.285Z",
+      "sourceUrl": "https://celestrak.org/NORAD/elements/gp.php?GROUP=cosmos-2251-debris&FORMAT=json",
+      "via": "local mirror directory /tmp/satvis",
+      "epochRange": {
+        "min": "2026-09-15T10:38:42.154944",
+        "max": "2026-10-10T07:59:09.799584"
+      }
+    },
+    "iridium-33-debris": {
+      "recordCount": 109,
+      "bytes": 46240,
+      "sha256": "08943427e0b67b2518b0b5c7b4ec21cb19c9ecaba2338003b70df5d26d332af9",
+      "capturedAt": "2026-10-10T16:48:21.868Z",
+      "sourceUrl": "https://celestrak.org/NORAD/elements/gp.php?GROUP=iridium-33-debris&FORMAT=json",
+      "via": "local mirror directory /tmp/satvis",
+      "epochRange": {
+        "min": "2026-09-26T01:17:07.958112",
+        "max": "2026-10-10T07:29:56.588064"
+      }
+    }
+  }
+}

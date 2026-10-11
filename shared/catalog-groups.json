@@ -1,0 +1,106 @@
+[
+  {
+    "id": "stations",
+    "label": "Space stations",
+    "description": "Crewed orbital outposts and their visiting vehicles.",
+    "category": "crewed",
+    "bundle": true,
+    "order": 1
+  },
+  {
+    "id": "visual",
+    "label": "Brightest",
+    "description": "The 100+ brightest tracked objects — the classic naked-eye satellite list.",
+    "category": "visual",
+    "bundle": true,
+    "order": 2
+  },
+  {
+    "id": "active",
+    "label": "Active satellites",
+    "description": "Everything currently catalogued as operational: ~16,000 payloads.",
+    "category": "catalog",
+    "bundle": true,
+    "order": 3
+  },
+  {
+    "id": "starlink",
+    "label": "Starlink",
+    "description": "The SpaceX Starlink mega-constellation.",
+    "category": "constellation",
+    "bundle": true,
+    "order": 4
+  },
+  {
+    "id": "weather",
+    "label": "Weather & Earth observation",
+    "description": "Meteorological and remote-sensing spacecraft.",
+    "category": "earth-observation",
+    "bundle": true,
+    "order": 5
+  },
+  {
+    "id": "science",
+    "label": "Science",
+    "description": "Astronomy, geodesy, ionospheric and technology-demonstration missions.",
+    "category": "science",
+    "bundle": true,
+    "order": 6
+  },
+  {
+    "id": "fengyun-1c-debris",
+    "label": "Fengyun-1C debris",
+    "description": "Fragments from the 2007 anti-satellite test — the largest single debris cloud in low Earth orbit.",
+    "category": "debris",
+    "bundle": true,
+    "order": 7
+  },
+  {
+    "id": "cosmos-2251-debris",
+    "label": "Cosmos-2251 debris",
+    "description": "Fragments from the 2009 Iridium-33 / Cosmos-2251 collision.",
+    "category": "debris",
+    "bundle": true,
+    "order": 8
+  },
+  {
+    "id": "iridium-33-debris",
+    "label": "Iridium-33 debris",
+    "description": "Fragments from the same 2009 collision, tracked separately by CelesTrak.",
+    "category": "debris",
+    "bundle": true,
+    "order": 9
+  },
+  {
+    "id": "gps-ops",
+    "label": "GPS operational",
+    "description": "The operational GPS navigation constellation.",
+    "category": "navigation",
+    "bundle": false,
+    "order": 10
+  },
+  {
+    "id": "geo",
+    "label": "Geostationary",
+    "description": "Objects in the geostationary belt.",
+    "category": "catalog",
+    "bundle": false,
+    "order": 11
+  },
+  {
+    "id": "oneweb",
+    "label": "OneWeb",
+    "description": "The OneWeb low Earth orbit broadband constellation.",
+    "category": "constellation",
+    "bundle": false,
+    "order": 12
+  },
+  {
+    "id": "last-30-days",
+    "label": "Launched in the last 30 days",
+    "description": "Objects added to the catalogue in the last 30 days.",
+    "category": "catalog",
+    "bundle": false,
+    "order": 13
+  }
+]
