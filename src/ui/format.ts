@@ -32,16 +32,21 @@ export function formatNumber(value: number | null | undefined, digits = 2): stri
   });
 }
 
+/**
+ * Latitude/longitude as four decimal places of a degree — about 11 m at the
+ * equator, i.e. far finer than any orbit represents but coarse enough to stay
+ * readable for a satellite moving at 7 km/s.
+ */
 export function formatLatitude(deg: number): string {
   if (!Number.isFinite(deg)) return '—';
   const hemi = deg >= 0 ? 'N' : 'S';
-  return `${Math.abs(deg).toFixed(3)}° ${hemi}`;
+  return `${Math.abs(deg).toFixed(4)}° ${hemi}`;
 }
 
 export function formatLongitude(deg: number): string {
   if (!Number.isFinite(deg)) return '—';
   const hemi = deg >= 0 ? 'E' : 'W';
-  return `${Math.abs(deg).toFixed(3)}° ${hemi}`;
+  return `${Math.abs(deg).toFixed(4)}° ${hemi}`;
 }
 
 export function formatDuration(minutes: number): string {

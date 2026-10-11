@@ -26,6 +26,32 @@ export type ValidationResult =
   | { ok: true; record: GpRecord }
   | { ok: false; reason: string };
 
+/**
+ * Matches an explicit timezone designator at the end of an ISO-8601 timestamp:
+ * `Z`, `+HH:MM`, `-HHMM`, …
+ */
+const EPOCH_ZONE_SUFFIX = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+
+/**
+ * Parse a CelesTrak `EPOCH` string as UTC.
+ *
+ * CelesTrak GP JSON publishes element epochs without a timezone designator
+ * (`"2026-08-31T01:02:28.311936"`). ECMAScript parses such a string in the
+ * *host's local zone*, which would shift every displayed epoch, element age and
+ * derived path by the viewer's UTC offset. The absence of a designator is
+ * therefore normalised to UTC before parsing — the same convention satellite.js
+ * applies inside `json2satrec`, so the propagator and the interface agree.
+ *
+ * Returns NaN for an unparseable value; callers decide whether that is fatal.
+ */
+export function parseEpochMs(epoch: string): number {
+  const value = String(epoch).trim();
+  if (value === '') return NaN;
+  // Tolerate the space-separated form ("2026-08-31 01:02:28") by making it ISO.
+  const iso = value.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:)/, '$1T$2');
+  return Date.parse(EPOCH_ZONE_SUFFIX.test(iso) ? iso : `${iso}Z`);
+}
+
 /** Structural + range validation of one GP record. */
 export function validateGpRecord(raw: unknown): ValidationResult {
   if (typeof raw !== 'object' || raw === null) return { ok: false, reason: 'record is not an object' };
@@ -34,7 +60,7 @@ export function validateGpRecord(raw: unknown): ValidationResult {
   if (typeof rec.OBJECT_NAME !== 'string' || rec.OBJECT_NAME.trim() === '') {
     return { ok: false, reason: 'missing OBJECT_NAME' };
   }
-  if (typeof rec.EPOCH !== 'string' || Number.isNaN(Date.parse(rec.EPOCH))) {
+  if (typeof rec.EPOCH !== 'string' || Number.isNaN(parseEpochMs(rec.EPOCH))) {
     return { ok: false, reason: 'missing or unparseable EPOCH' };
   }
   for (const field of REQUIRED_NUMERIC_FIELDS) {
@@ -52,7 +78,7 @@ export function validateGpRecord(raw: unknown): ValidationResult {
   if (eccentricity < 0 || eccentricity >= 1) return { ok: false, reason: 'ECCENTRICITY out of range [0,1)' };
   if (inclination < 0 || inclination > 180) return { ok: false, reason: 'INCLINATION out of range [0,180]' };
 
-  const epochMs = Date.parse(rec.EPOCH);
+  const epochMs = parseEpochMs(rec.EPOCH);
   // Reject elements dated absurdly far in the future: they indicate corrupt data.
   if (epochMs > Date.now() + 400 * 86_400_000) {
     return { ok: false, reason: 'EPOCH is more than 400 days in the future' };
@@ -63,7 +89,7 @@ export function validateGpRecord(raw: unknown): ValidationResult {
 
 /** Build the display/identity projection of a validated record. */
 export function toCatalogObject(record: GpRecord, index: number, nowMs: number): CatalogObject {
-  const epochMs = Date.parse(record.EPOCH);
+  const epochMs = parseEpochMs(record.EPOCH);
   const num = (v: unknown, fallback = 0) => {
     const n = typeof v === 'string' ? Number(v) : v;
     return typeof n === 'number' && Number.isFinite(n) ? n : fallback;

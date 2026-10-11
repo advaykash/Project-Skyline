@@ -6,9 +6,11 @@
  * propagation worker as a transferred Float32Array; the engine updates the
  * buffer attribute in place and never rebuilds geometry per frame.
  *
- * Markers for records that failed to propagate are written as NaN — the vertex
- * is discarded by the rasteriser, and the engine reports those failures through
- * the interface instead of drawing a substitute position.
+ * A record that failed to propagate keeps the `(0, 0, 0)` placeholder — an
+ * impossible scene position (the Earth's centre, which no real orbit occupies).
+ * The vertex shader clips anything with `dot(position, position) < 0.25`, so the
+ * slot is never rasterised, no NaN ever reaches the GPU, and the engine reports
+ * the failure through the interface instead of drawing a substitute position.
  */
 import * as THREE from 'three';
 
@@ -28,6 +30,13 @@ export const CATEGORY_COLORS: CategoryPalette = {
   catalog: 0x9fb6d0,
 };
 
+/**
+ * Squared scene radius below which a vertex is treated as the "no position"
+ * placeholder. The Earth's mean radius is 1 scene unit, so no genuine fix can
+ * fall inside it; `(0,0,0)` (and any NaN, which compares false) is discarded.
+ */
+export const MARKER_PLACEHOLDER_RADIUS_SQ = 0.25;
+
 const VERT = /* glsl */ `
   attribute float pointSize;
   attribute vec3 color;
@@ -37,6 +46,14 @@ const VERT = /* glsl */ `
 
   void main() {
     vColor = color;
+    // Failed propagations sit at (0,0,0) — the Earth's centre. Clip those slots
+    // (dot(position, position) < 0.25) by parking them outside the clip volume
+    // with a collapsed point size, rather than shipping NaN to the rasteriser.
+    if (dot(position, position) < 0.25) {
+      gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      gl_PointSize = 0.0;
+      return;
+    }
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     float scale = viewportHeight * 0.5 / max(-mvPosition.z, 0.001);
     gl_PointSize = clamp(pointSize * scale, 1.15, maxSize);
@@ -65,14 +82,18 @@ export function createSatellitePoints(capacity: number): {
   material: THREE.ShaderMaterial;
 } {
   const geometry = new THREE.BufferGeometry();
-  const positions = new Float32Array(capacity * 3).fill(Number.NaN);
+  // Zero-filled: an unpropagated slot is the (0,0,0) placeholder, which the
+  // vertex shader clips. Never NaN — NaN leaves the rasteriser with undefined
+  // behaviour and poisons picking maths.
+  const positions = new Float32Array(capacity * 3);
   const colors = new Float32Array(capacity * 3);
   const sizes = new Float32Array(capacity).fill(2.2);
 
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geometry.setAttribute('pointSize', new THREE.BufferAttribute(sizes, 1));
-  // A fixed bounding sphere keeps NaN positions from breaking frustum culling.
+  // A fixed bounding sphere keeps placeholder positions from breaking frustum
+  // culling; the marker object is also drawn with `frustumCulled = false`.
   geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 20);
 
   const material = new THREE.ShaderMaterial({
@@ -131,5 +152,40 @@ export function paintCategory(geometry: THREE.BufferGeometry, count: number, cat
 export function writePositions(geometry: THREE.BufferGeometry, positions: Float32Array): void {
   const attribute = geometry.getAttribute('position') as THREE.BufferAttribute;
   (attribute.array as Float32Array).set(positions.subarray(0, attribute.array.length));
+  attribute.needsUpdate = true;
+}
+
+/**
+ * True when a marker slot holds the `(0,0,0)` placeholder of a failed
+ * propagation (or a stale NaN from an earlier build) and must be ignored.
+ */
+export function isPlaceholderPosition(x: number, y: number, z: number): boolean {
+  // Written as a negated comparison so NaN — which fails every comparison —
+  // counts as a placeholder too.
+  return !(x * x + y * y + z * z >= MARKER_PLACEHOLDER_RADIUS_SQ);
+}
+
+/**
+ * Write a single marker position in place. Used once per frame for the selected
+ * object, whose state is propagated on the main thread so its highlight tracks
+ * smoothly even when the whole-catalogue worker tick is far slower.
+ */
+export function writePosition(
+  geometry: THREE.BufferGeometry,
+  index: number,
+  x: number,
+  y: number,
+  z: number,
+): void {
+  const attribute = geometry.getAttribute('position') as THREE.BufferAttribute;
+  const array = attribute.array as Float32Array;
+  const offset = index * 3;
+  if (index < 0 || offset + 2 >= array.length) return;
+  array[offset] = x;
+  array[offset + 1] = y;
+  array[offset + 2] = z;
+  // Re-upload just this vertex where partial buffer updates are supported, so a
+  // 16k-object catalogue does not re-upload 192 kB every frame.
+  if (typeof attribute.addUpdateRange === 'function') attribute.addUpdateRange(offset, 3);
   attribute.needsUpdate = true;
 }

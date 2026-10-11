@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSatrec,
   describePropagationFailure,
+  parseEpochMs,
   propagateState,
   toCatalogObject,
   validateGpRecord,
@@ -92,6 +93,35 @@ describe('GP record validation', () => {
   it('describes propagation failures in user language', () => {
     expect(describePropagationFailure('decayed')).toMatch(/decayed/i);
     expect(describePropagationFailure('unknown-error')).toMatch(/SGP4/);
+  });
+});
+
+describe('CelesTrak epoch parsing', () => {
+  it('reads a timezone-less EPOCH as UTC rather than as host-local time', () => {
+    // CelesTrak publishes epochs with no zone designator, e.g. the snapshot's
+    // "2026-08-31T01:02:28.311936". Reading it as local time would shift every
+    // displayed epoch and element age by the host's UTC offset.
+    const epochMs = parseEpochMs('2026-08-31T01:02:28.311936');
+    expect(epochMs).toBe(Date.parse('2026-08-31T01:02:28.311936Z'));
+    expect(new Date(epochMs).toISOString()).toBe('2026-08-31T01:02:28.311Z');
+  });
+
+  it('honours an explicit zone designator when the source provides one', () => {
+    expect(parseEpochMs('2026-08-31T01:02:28Z')).toBe(Date.parse('2026-08-31T01:02:28Z'));
+    expect(parseEpochMs('2026-08-31T03:02:28+02:00')).toBe(Date.parse('2026-08-31T01:02:28Z'));
+  });
+
+  it('tolerates the space-separated form and reports junk as NaN', () => {
+    expect(parseEpochMs('2026-08-31 01:02:28')).toBe(Date.parse('2026-08-31T01:02:28Z'));
+    expect(Number.isNaN(parseEpochMs('not-a-date'))).toBe(true);
+    expect(Number.isNaN(parseEpochMs('   '))).toBe(true);
+  });
+
+  it('drives the catalogue projection from the same UTC instant', () => {
+    const record = { ...issRecord, EPOCH: '2026-05-01T00:00:00.000000' } as unknown as GpRecord;
+    const object = toCatalogObject(record, 0, Date.parse('2026-05-01T00:00:00Z'));
+    expect(object.epochMs).toBe(Date.parse('2026-05-01T00:00:00Z'));
+    expect(object.epochAgeDays).toBe(0);
   });
 });
 

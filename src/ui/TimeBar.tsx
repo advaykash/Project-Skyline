@@ -1,51 +1,93 @@
+import { useCallback, useEffect, useState } from 'react';
 import type { CatalogState, LayerVisibility } from '../state/store';
 import { CATEGORY_COLORS } from '../globe/satellitePoints';
+import {
+  getRate,
+  getTimeMs,
+  resetToNow,
+  setRate,
+  setTime,
+  subscribe as subscribeClock,
+} from '../state/clock';
 import { formatUtc } from './format';
 
 export interface TimeBarProps {
-  simTimeMs: number;
-  rate: number;
   catalog: CatalogState | null;
   layers: LayerVisibility;
-  onRateChange(rate: number): void;
-  onNow(): void;
-  onSeek(deltaMs: number): void;
 }
 
 const RATES = [1, 60, 300, 1800, 7200];
+/** How far the −30m/+30m buttons move the simulation clock. */
+const SEEK_STEP_MS = 30 * 60_000;
 
+/**
+ * The simulation clock readout and controls.
+ *
+ * The bar subscribes to the clock itself and owns the playback rate, so a clock
+ * notification repaints this footer alone instead of re-rendering the whole
+ * application shell (globe, panels, search results) several times per second.
+ */
 export function TimeBar(props: TimeBarProps) {
+  const [simTimeMs, setSimTimeMs] = useState(() => getTimeMs());
+  const [rate, setRateState] = useState(() => getRate());
+
+  useEffect(() => {
+    // `subscribe` returns its own unsubscribe function — handing it straight
+    // back to React keeps one listener for the lifetime of the bar.
+    return subscribeClock((ms) => setSimTimeMs(ms));
+  }, []);
+
+  const onRateChange = useCallback((nextRate: number) => {
+    setRate(nextRate);
+    setRateState(nextRate);
+  }, []);
+
+  const onNow = useCallback(() => {
+    resetToNow();
+    setRateState(1);
+    setSimTimeMs(getTimeMs());
+  }, []);
+
+  const onSeek = useCallback((deltaMs: number) => {
+    const next = Math.min(
+      Math.max(getTimeMs() + deltaMs, Date.now() - 7 * 86_400_000),
+      Date.now() + 3 * 86_400_000,
+    );
+    setTime(next);
+    setSimTimeMs(next);
+  }, []);
+
   const category = props.catalog ? categoryKey(props.catalog.group) : 'catalog';
   const color = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.catalog;
 
   return (
     <footer className="timebar">
       <div className="time-readout">
-        <span className="time-value">{formatUtc(props.simTimeMs)} UTC</span>
+        <span className="time-value">{formatUtc(simTimeMs)} UTC</span>
         <span className="time-caption">
-          {props.rate === 1 ? 'simulation time · real time' : `simulation time · ${props.rate.toLocaleString('en-US')}× speed`}
+          {rate === 1 ? 'simulation time · real time' : `simulation time · ${rate.toLocaleString('en-US')}× speed`}
         </span>
       </div>
 
       <div className="rate-group" role="group" aria-label="Simulation speed">
-        {RATES.map((rate) => (
+        {RATES.map((value) => (
           <button
-            key={rate}
+            key={value}
             type="button"
             className="rate-btn"
-            aria-pressed={props.rate === rate}
-            onClick={() => props.onRateChange(rate)}
+            aria-pressed={rate === value}
+            onClick={() => onRateChange(value)}
           >
-            {rate === 1 ? '1×' : `${rate / 1 >= 1000 ? `${rate / 1000}k` : rate}×`}
+            {value === 1 ? '1×' : `${value / 1 >= 1000 ? `${value / 1000}k` : value}×`}
           </button>
         ))}
-        <button type="button" className="rate-btn" onClick={() => props.onSeek(-30 * 60_000)} title="Back 30 minutes">
+        <button type="button" className="rate-btn" onClick={() => onSeek(-SEEK_STEP_MS)} title="Back 30 minutes">
           −30m
         </button>
-        <button type="button" className="rate-btn" onClick={() => props.onSeek(30 * 60_000)} title="Forward 30 minutes">
+        <button type="button" className="rate-btn" onClick={() => onSeek(SEEK_STEP_MS)} title="Forward 30 minutes">
           +30m
         </button>
-        <button type="button" className="rate-btn" onClick={props.onNow} title="Return to the current time">
+        <button type="button" className="rate-btn" onClick={onNow} title="Return to the current time">
           Now
         </button>
       </div>

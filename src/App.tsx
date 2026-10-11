@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { GpResponse, HealthResponse } from '../shared/contracts';
 import { ApiRequestError, fetchCatalog, fetchHealth } from './data/api';
 import {
@@ -9,21 +9,9 @@ import {
   type CatalogState,
   type LayerVisibility,
 } from './state/store';
-import {
-  advance as advanceClock,
-  claimPump,
-  getRate,
-  getTimeMs,
-  resetToNow,
-  releasePump,
-  setRate,
-  setTime as clockSetTime,
-  subscribe as subscribeClock,
-} from './state/clock';
+import { advance as advanceClock, claimPump, releasePump } from './state/clock';
 import { GlobeEngine } from './globe/GlobeEngine';
 import { loadEarthTextures } from './globe/textures';
-import { buildSatrec, propagateState } from './orbital/elements';
-import type { SatelliteState } from './orbital/types';
 import { Header } from './ui/Header';
 import { SearchPanel } from './ui/SearchPanel';
 import { Inspector } from './ui/Inspector';
@@ -31,6 +19,8 @@ import { TimeBar } from './ui/TimeBar';
 import type { GpRecord } from './orbital/types';
 
 const DEFAULT_GROUP = 'stations';
+/** NORAD catalogue number of the ISS (ZARYA) — the object the app opens on. */
+const ISS_NORAD_ID = 25544;
 
 export function App() {
   const catalog = useStore((s) => s.catalog);
@@ -45,18 +35,13 @@ export function App() {
   const toasts = useStore((s) => s.toasts);
   const leftOpen = useStore((s) => s.leftPanelOpen);
   const rightOpen = useStore((s) => s.rightPanelOpen);
-  const [simTimeMs, setSimTimeMs] = useState(() => getTimeMs());
-  const [rate, setRateState] = useState(() => getRate());
-  const [liveState, setLiveState] = useState<{ state: SatelliteState | null; atMs: number }>({
-    state: null,
-    atMs: getTimeMs(),
-  });
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const labelLayerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<GlobeEngine | null>(null);
-  const selectionSatrecRef = useRef<ReturnType<typeof buildSatrec> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /** Startup selection happens once, on the first catalogue that contains the ISS. */
+  const autoSelectedRef = useRef(false);
 
   /* ------------------------------------------------------------ data load */
 
@@ -73,16 +58,25 @@ export function App() {
         provenance: response.provenance,
         state: response.state,
       };
-      setState((s) => ({
-        catalog: next,
-        catalogLoading: false,
-        catalogError: null,
-        selectedNoradId:
+      setState((s) => {
+        const keepsSelection =
           s.selectedNoradId !== null &&
-          next.records.some((r) => Number(r.NORAD_CAT_ID) === s.selectedNoradId)
-            ? s.selectedNoradId
-            : null,
-      }));
+          next.records.some((r) => Number(r.NORAD_CAT_ID) === s.selectedNoradId);
+        // Open on the ISS: the station group is the default view, and having a
+        // real object selected from the first frame makes the inspector,
+        // orbit path and ground track immediately meaningful.
+        const autoSelect =
+          !keepsSelection &&
+          !autoSelectedRef.current &&
+          next.records.some((r) => Number(r.NORAD_CAT_ID) === ISS_NORAD_ID);
+        if (autoSelect) autoSelectedRef.current = true;
+        return {
+          catalog: next,
+          catalogLoading: false,
+          catalogError: null,
+          selectedNoradId: keepsSelection ? s.selectedNoradId : autoSelect ? ISS_NORAD_ID : null,
+        };
+      });
       engineRef.current?.setCatalog(next.records, next.group);
       if (response.state !== 'live') {
         pushToast(
@@ -129,9 +123,8 @@ export function App() {
 
   /* ------------------------------------------------------------- clock UI */
 
-  useEffect(() => {
-    return subscribeClock((ms) => setSimTimeMs(ms));
-  }, []);
+  // The clock subscription lives in <TimeBar>, which is the only component that
+  // displays it: a tick repaints the footer instead of the whole shell.
 
   // Fallback clock pump when WebGL is unavailable (exactly one pump ever runs).
   useEffect(() => {
@@ -139,7 +132,6 @@ export function App() {
     if (!claimPump('app-fallback')) return;
     const id = window.setInterval(() => {
       advanceClock(performance.now(), 'app-fallback');
-      setSimTimeMs(getTimeMs());
     }, 100);
     return () => {
       window.clearInterval(id);
@@ -193,37 +185,12 @@ export function App() {
     };
   }, []);
 
-  // Selection -> engine. (No setState here: the inspector's live-value
-  // interval below refreshes within a quarter second, and the Inspector hides
-  // live values entirely whenever nothing is selected.)
+  // Selection -> engine. The Inspector propagates the selected object for its
+  // own readout, at its own cadence; the engine keeps the globe's copy of the
+  // same state. Neither hands values to the other.
   useEffect(() => {
     engineRef.current?.setSelected(selectedNoradId);
-    selectionSatrecRef.current = null;
-    if (selectedNoradId === null || !getState().catalog) return;
-    const record = getState().catalog?.records.find((r) => Number(r.NORAD_CAT_ID) === selectedNoradId);
-    if (!record) return;
-    try {
-      selectionSatrecRef.current = buildSatrec(record);
-    } catch {
-      selectionSatrecRef.current = null;
-    }
   }, [selectedNoradId, catalog]);
-
-  // Inspector live values, at a calm cadence, always stamped with the exact
-  // instant they were computed for (they use the same code path as the marker).
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      const satrec = selectionSatrecRef.current;
-      const noradId = getState().selectedNoradId;
-      if (!satrec || noradId === null) {
-        setLiveState({ state: null, atMs: getTimeMs() });
-        return;
-      }
-      const atMs = getTimeMs();
-      setLiveState({ state: propagateState(satrec, noradId, new Date(atMs)), atMs });
-    }, 250);
-    return () => window.clearInterval(id);
-  }, []);
 
   // Layers / follow -> engine
   useEffect(() => {
@@ -262,30 +229,10 @@ export function App() {
     void loadCatalogGroup(getState().catalog?.group ?? DEFAULT_GROUP);
   }, [loadCatalogGroup]);
 
-  const onRateChange = useCallback((nextRate: number) => {
-    setRate(nextRate);
-    setRateState(nextRate);
-  }, []);
-
-  const onNow = useCallback(() => {
-    resetToNow();
-    setRateState(1);
-    setSimTimeMs(getTimeMs());
-  }, []);
-
-  const onSeek = useCallback((deltaMs: number) => {
-    const next = Math.min(Math.max(getTimeMs() + deltaMs, Date.now() - 7 * 86_400_000), Date.now() + 3 * 86_400_000);
-    setSimTimeMs(next);
-    // setTime is exported through the clock module's API surface:
-    clockSetTime(next);
-  }, []);
-
   const inspectorProps = useMemo(
     () => ({
       catalog,
       noradId: selectedNoradId,
-      liveState: liveState.state,
-      simTimeMs: liveState.atMs,
       layers,
       followSelection,
       onFocus: () => engineRef.current?.focusSelected(),
@@ -293,17 +240,43 @@ export function App() {
       onLayerToggle,
       onSelect,
     }),
-    [catalog, selectedNoradId, liveState, layers, followSelection, onLayerToggle, onSelect],
+    [catalog, selectedNoradId, layers, followSelection, onLayerToggle, onSelect],
   );
+
+  // On narrow screens the two panels are drawers over the globe: only one may be
+  // open at a time, and the backdrop below closes whichever is open.
+  const openDrawer = useCallback((drawer: 'left' | 'right') => {
+    setState((s) => {
+      const open = drawer === 'left' ? s.leftPanelOpen : s.rightPanelOpen;
+      return {
+        leftPanelOpen: open ? false : drawer === 'left',
+        rightPanelOpen: open ? false : drawer === 'right',
+      };
+    });
+  }, []);
+
+  const closeDrawers = useCallback(() => {
+    setState({ leftPanelOpen: false, rightPanelOpen: false });
+  }, []);
 
   return (
     <div className="app-shell">
       <Header
-        onToggleLeft={() => setState((s) => ({ leftPanelOpen: !s.leftPanelOpen }))}
-        onToggleRight={() => setState((s) => ({ rightPanelOpen: !s.rightPanelOpen }))}
+        onToggleLeft={() => openDrawer('left')}
+        onToggleRight={() => openDrawer('right')}
       />
 
+      {leftOpen || rightOpen ? (
+        <div className="panel-backdrop" onClick={closeDrawers} aria-hidden="true" />
+      ) : null}
+
       <aside className={`panel panel-left${leftOpen ? ' is-open' : ''}`} aria-label="Search and data sources">
+        <div className="panel-drawer-bar">
+          <span className="panel-drawer-title">Search &amp; sources</span>
+          <button type="button" className="btn panel-close" onClick={closeDrawers} aria-label="Close search panel">
+            Close
+          </button>
+        </div>
         <SearchPanel
           catalog={catalog}
           health={health}
@@ -360,18 +333,16 @@ export function App() {
       </main>
 
       <aside className={`panel panel-right${rightOpen ? ' is-open' : ''}`} aria-label="Selected object inspector">
+        <div className="panel-drawer-bar">
+          <span className="panel-drawer-title">Inspector</span>
+          <button type="button" className="btn panel-close" onClick={closeDrawers} aria-label="Close inspector panel">
+            Close
+          </button>
+        </div>
         <Inspector {...inspectorProps} />
       </aside>
 
-      <TimeBar
-        simTimeMs={simTimeMs}
-        rate={rate}
-        catalog={catalog}
-        layers={layers}
-        onRateChange={onRateChange}
-        onNow={onNow}
-        onSeek={onSeek}
-      />
+      <TimeBar catalog={catalog} layers={layers} />
 
       <div className="toast-region" role="status" aria-live="polite">
         {toasts.map((toast) => (

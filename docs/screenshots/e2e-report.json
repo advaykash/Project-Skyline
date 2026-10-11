@@ -1,6 +1,6 @@
 {
   "baseURL": "http://127.0.0.1:8788",
-  "testedAt": "2026-10-11T00:59:59.369Z",
+  "testedAt": "2026-10-11T02:44:26.576Z",
   "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
   "results": [
     {
@@ -36,7 +36,7 @@
     {
       "name": "provenance is explicit about freshness",
       "ok": true,
-      "detail": "Offline snapshot captured 2026-10-10T21:52:53.556Z (3.1 h old). CelesTrak could not be rea"
+      "detail": "Offline snapshot captured 2026-10-10T21:52:53.556Z (4.8 h old). CelesTrak could not be rea"
     },
     {
       "name": "search results render",
@@ -56,17 +56,17 @@
     {
       "name": "geodetic position is populated",
       "ok": true,
-      "detail": "lat=26.351° S lon=29.337° E"
+      "detail": "lat=8.0963° N lon=32.1841° E"
     },
     {
       "name": "altitude is plausible for the ISS",
       "ok": true,
-      "detail": "alt=426.8km above WGS-84"
+      "detail": "alt=422.65km above WGS-84"
     },
     {
       "name": "velocity is populated",
       "ok": true,
-      "detail": "speed=7.656km/s inertial"
+      "detail": "speed=7.658km/s inertial"
     },
     {
       "name": "source elements shown separately from calculated values",
@@ -91,7 +91,7 @@
     {
       "name": "inspector actions render",
       "ok": true,
-      "detail": "4 buttons"
+      "detail": "5 buttons"
     },
     {
       "name": "camera drag interaction completes without errors",
@@ -130,11 +130,17 @@
     },
     {
       "name": "console errors (informational)",
-      "ok": true,
-      "detail": "clean"
+      "ok": false,
+      "detail": "Failed to load resource: net::ERR_CONNECTION_CLOSED | Failed to load resource: net::ERR_CONNECTION_CLOSED"
     }
   ],
-  "consoleErrors": [],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+    "Failed to load resource: net::ERR_CONNECTION_CLOSED"
+  ],
   "pageErrors": [],
-  "failedRequests": []
+  "failedRequests": [
+    "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=json :: net::ERR_CONNECTION_CLOSED",
+    "https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=json :: net::ERR_CONNECTION_CLOSED"
+  ]
 }

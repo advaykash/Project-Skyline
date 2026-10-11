@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import type { CatalogState, LayerVisibility } from '../state/store';
 import type { SatelliteState } from '../orbital/types';
 import {
@@ -6,7 +6,8 @@ import {
   elementAgeDays,
   estimatedAlongTrackDriftKm,
 } from '../orbital/derived';
-import { describePropagationFailure, toCatalogObject } from '../orbital/elements';
+import { buildSatrec, describePropagationFailure, propagateState, toCatalogObject } from '../orbital/elements';
+import { getTimeMs } from '../state/clock';
 import { StateChip } from './StateChip';
 import {
   formatAge,
@@ -20,9 +21,6 @@ import {
 export interface InspectorProps {
   catalog: CatalogState | null;
   noradId: number | null;
-  /** Live state for the selected object, computed at the engine's current time. */
-  liveState: SatelliteState | null;
-  simTimeMs: number;
   layers: LayerVisibility;
   followSelection: boolean;
   onFocus(): void;
@@ -31,18 +29,54 @@ export interface InspectorProps {
   onSelect(noradId: number | null): void;
 }
 
+/**
+ * Cadence of the calculated-position readout. Fast enough that dragging the
+ * globe or nudging the clock feels connected to the numbers, slow enough that
+ * SGP4 on the main thread never competes with rendering.
+ */
+const LIVE_STATE_INTERVAL_MS = 200;
+
 export const Inspector = memo(function Inspector(props: InspectorProps) {
-  const { catalog, noradId, liveState, simTimeMs, layers } = props;
+  const { catalog, noradId, layers } = props;
 
   const record = useMemo(() => {
     if (!catalog || noradId === null) return null;
     return catalog.records.find((r) => Number(r.NORAD_CAT_ID) === noradId) ?? null;
   }, [catalog, noradId]);
 
+  // The inspector owns the propagation cadence: one SGP4 call per tick for the
+  // selected object only, stamped with the exact instant it was computed for.
+  // The globe renders its own copy of the same state, from the same elements.
+  const satrec = useMemo(() => {
+    if (!record) return null;
+    try {
+      return buildSatrec(record);
+    } catch {
+      return null;
+    }
+  }, [record]);
+
+  // The live value is tagged with the object it belongs to, so a new selection
+  // never displays the previous object's position while its first tick is
+  // pending. Each tick is stamped with the exact instant it was computed for.
+  const [live, setLive] = useState<{ noradId: number; state: SatelliteState } | null>(null);
+
+  useEffect(() => {
+    if (!satrec || noradId === null) return;
+    const compute = () => {
+      const atMs = getTimeMs();
+      setLive({ noradId, state: propagateState(satrec, noradId, new Date(atMs)) });
+    };
+    const id = window.setInterval(compute, LIVE_STATE_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [satrec, noradId]);
+
   if (!record || noradId === null) {
     return <InspectorEmpty catalog={catalog} />;
   }
 
+  const liveState = live && live.noradId === noradId ? live.state : null;
+  const simTimeMs = liveState ? liveState.timeMs : getTimeMs();
   const object = toCatalogObject(record, 0, simTimeMs);
   const derived = deriveElements(object);
   const ageDays = elementAgeDays(object, simTimeMs);
@@ -133,7 +167,7 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
               <tr>
                 <th scope="row">Altitude</th>
                 <td>
-                  {formatNumber(liveState.geodetic.altitudeKm, 1)}
+                  {formatNumber(liveState.geodetic.altitudeKm, 2)}
                   <span className="unit">km above WGS-84</span>
                 </td>
               </tr>
